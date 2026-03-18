@@ -160,6 +160,8 @@ textarea { resize: vertical; min-height: 120px; }
   <header>
     <h1><span>Executive</span> Task Manager</h1>
     <div class="header-actions">
+      <button class="btn-ghost btn-sm" id="syncBtn" onclick="connectSyncFile()" style="border-color:#22c55e;color:#22c55e;">📁 파일 연결</button>
+      <span id="syncStatus" style="font-size:11px;color:var(--text2);"></span>
       <button class="btn-ghost btn-sm" onclick="exportData()">JSON 내보내기</button>
       <button class="btn-ghost btn-sm" onclick="importData()">JSON 불러오기</button>
       <button class="btn-success btn-sm" onclick="exportExcel()">Excel 내보내기</button>
@@ -857,7 +859,7 @@ function handleImport(e) {
       const data = JSON.parse(ev.target.result);
       if (data.tasks) { tasks = data.tasks; saveTasks(); }
       if (data.settings) { settings = data.settings; saveSettingsToStorage(); }
-      if (data.keywords) { keywords = data.keywords; localStorage.setItem('etm_keywords', JSON.stringify(keywords)); }
+      if (data.keywords) { keywords = data.keywords; localStorage.setItem('etm_keywords', JSON.stringify(keywords)); writeToFile(); }
       renderAll();
       alert('불러오기 완료');
     } catch(err) { alert('파일 형식 오류'); }
@@ -922,7 +924,7 @@ function loadSettingsUI() {
 
 function resetKeywords() {
   keywords = JSON.parse(JSON.stringify(DEFAULT_KEYWORDS));
-  localStorage.setItem('etm_keywords', JSON.stringify(keywords));
+  localStorage.setItem('etm_keywords', JSON.stringify(keywords)); writeToFile();
   alert('키워드 규칙 초기화됨');
 }
 
@@ -938,9 +940,101 @@ document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
 
+// ===== FILE SYNC (File System Access API) =====
+let fileHandle = null;
+
+async function connectSyncFile() {
+  try {
+    // 파일 선택 또는 새로 만들기
+    const opts = {
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+      suggestedName: 'task-manager-data.json'
+    };
+
+    try {
+      // 기존 파일 열기 시도
+      [fileHandle] = await window.showOpenFilePicker(opts);
+    } catch (e) {
+      // 취소했으면 새 파일 만들기 제안
+      if (e.name === 'AbortError') {
+        if (confirm('기존 파일이 없으면 새로 만듭니다. 새 파일을 만들까요?')) {
+          fileHandle = await window.showSaveFilePicker(opts);
+          await writeToFile(); // 현재 데이터 저장
+        } else return;
+      } else throw e;
+    }
+
+    // 파일에서 데이터 읽기
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    if (text.trim()) {
+      const data = JSON.parse(text);
+      if (data.tasks) tasks = data.tasks;
+      if (data.settings) { Object.assign(settings, data.settings); applySettings(); }
+      if (data.keywords) keywords = data.keywords;
+      // LocalStorage에도 동기화
+      localStorage.setItem('etm_tasks', JSON.stringify(tasks));
+      localStorage.setItem('etm_settings', JSON.stringify(settings));
+      localStorage.setItem('etm_keywords', JSON.stringify(keywords)); writeToFile();
+      renderAll();
+    }
+
+    updateSyncUI(true);
+  } catch (e) {
+    if (e.name !== 'AbortError') { alert('파일 연결 실패: ' + e.message); }
+  }
+}
+
+async function writeToFile() {
+  if (!fileHandle) return;
+  try {
+    const writable = await fileHandle.createWritable();
+    const data = JSON.stringify({ tasks, settings, keywords, savedAt: new Date().toISOString() }, null, 2);
+    await writable.write(data);
+    await writable.close();
+  } catch (e) {
+    console.warn('파일 쓰기 실패:', e);
+  }
+}
+
+async function reloadFromFile() {
+  if (!fileHandle) return;
+  try {
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    if (text.trim()) {
+      const data = JSON.parse(text);
+      if (data.tasks) tasks = data.tasks;
+      if (data.settings) { Object.assign(settings, data.settings); applySettings(); }
+      if (data.keywords) keywords = data.keywords;
+      localStorage.setItem('etm_tasks', JSON.stringify(tasks));
+      renderAll();
+    }
+  } catch (e) { console.warn('파일 읽기 실패:', e); }
+}
+
+function updateSyncUI(connected) {
+  const btn = document.getElementById('syncBtn');
+  const status = document.getElementById('syncStatus');
+  if (connected) {
+    btn.textContent = '✅ 동기화 중';
+    btn.style.borderColor = '#22c55e';
+    status.textContent = fileHandle.name;
+  } else {
+    btn.textContent = '📁 파일 연결';
+    status.textContent = '';
+  }
+}
+
 // ===== HELPERS =====
-function saveTasks() { localStorage.setItem('etm_tasks', JSON.stringify(tasks)); }
-function saveSettingsToStorage() { localStorage.setItem('etm_settings', JSON.stringify(settings)); }
+function saveTasks() {
+  localStorage.setItem('etm_tasks', JSON.stringify(tasks));
+  writeToFile(); // 파일에도 저장
+}
+function saveSettingsToStorage() {
+  localStorage.setItem('etm_settings', JSON.stringify(settings));
+  writeToFile(); // 파일에도 저장
+}
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function quadLabel(q) { return {q1:'Q1 긴급+중요',q2:'Q2 중요',q3:'Q3 긴급',q4:'Q4 기타'}[q]||q; }
 function parseTime(str) { const [h,m] = str.split(':').map(Number); return h*60+m; }
