@@ -1,0 +1,6 @@
+.claude_api_key
+*.firebase-adminsdk*.json
+task-manager-data.json
+.processed_files.json
+watcher.log
+Icon*

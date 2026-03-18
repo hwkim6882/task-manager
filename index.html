@@ -324,11 +324,66 @@ textarea { resize: vertical; min-height: 120px; }
   </div>
 
   <!-- 카테고리별 탭 -->
-  <div class="panel" id="panel-cat-로펌업무"><div class="task-list" id="catList-로펌업무"></div></div>
-  <div class="panel" id="panel-cat-스타트업"><div class="task-list" id="catList-스타트업"></div></div>
-  <div class="panel" id="panel-cat-마케팅"><div class="task-list" id="catList-마케팅"></div></div>
-  <div class="panel" id="panel-cat-개인"><div class="task-list" id="catList-개인"></div></div>
-  <div class="panel" id="panel-cat-쇼핑"><div class="task-list" id="catList-쇼핑"></div></div>
+  <div class="panel" id="panel-cat-로펌업무">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="cat-sort" data-cat="로펌업무" onchange="renderCategoryTabs()" style="width:auto;padding:6px 10px;font-size:12px;">
+        <option value="score">Quick Win순</option>
+        <option value="impact">중요도순</option>
+        <option value="time-desc">시간 오래걸리는순</option>
+        <option value="quad">긴급성순</option>
+        <option value="title">업무명순</option>
+      </select>
+    </div>
+    <div class="task-list" id="catList-로펌업무"></div>
+  </div>
+  <div class="panel" id="panel-cat-스타트업">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="cat-sort" data-cat="스타트업" onchange="renderCategoryTabs()" style="width:auto;padding:6px 10px;font-size:12px;">
+        <option value="score">Quick Win순</option>
+        <option value="impact">중요도순</option>
+        <option value="time-desc">시간 오래걸리는순</option>
+        <option value="quad">긴급성순</option>
+        <option value="title">업무명순</option>
+      </select>
+    </div>
+    <div class="task-list" id="catList-스타트업"></div>
+  </div>
+  <div class="panel" id="panel-cat-마케팅">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="cat-sort" data-cat="마케팅" onchange="renderCategoryTabs()" style="width:auto;padding:6px 10px;font-size:12px;">
+        <option value="score">Quick Win순</option>
+        <option value="impact">중요도순</option>
+        <option value="time-desc">시간 오래걸리는순</option>
+        <option value="quad">긴급성순</option>
+        <option value="title">업무명순</option>
+      </select>
+    </div>
+    <div class="task-list" id="catList-마케팅"></div>
+  </div>
+  <div class="panel" id="panel-cat-개인">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="cat-sort" data-cat="개인" onchange="renderCategoryTabs()" style="width:auto;padding:6px 10px;font-size:12px;">
+        <option value="score">Quick Win순</option>
+        <option value="impact">중요도순</option>
+        <option value="time-desc">시간 오래걸리는순</option>
+        <option value="quad">긴급성순</option>
+        <option value="title">업무명순</option>
+      </select>
+    </div>
+    <div class="task-list" id="catList-개인"></div>
+  </div>
+  <div class="panel" id="panel-cat-쇼핑">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select class="cat-sort" data-cat="쇼핑" onchange="renderCategoryTabs()" style="width:auto;padding:6px 10px;font-size:12px;">
+        <option value="score">Quick Win순</option>
+        <option value="impact">중요도순</option>
+        <option value="time-desc">시간 오래걸리는순</option>
+        <option value="quad">긴급성순</option>
+        <option value="title">업무명순</option>
+      </select>
+    </div>
+    <div class="task-list" id="catList-쇼핑"></div>
+  </div>
 
   <!-- 4. 액션 플랜 -->
   <div class="panel" id="panel-plan">
@@ -856,8 +911,18 @@ function renderCategoryTabs() {
   for (const cat of cats) {
     const el = document.getElementById('catList-' + cat);
     if (!el) continue;
-    const filtered = tasks.filter(t => t.category === cat && !t.done)
-      .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+    // 소팅 옵션 확인
+    const sortEl = document.querySelector(`.cat-sort[data-cat="${cat}"]`);
+    const sortBy = sortEl ? sortEl.value : 'score';
+    const filtered = tasks.filter(t => t.category === cat && !t.done);
+    filtered.sort((a,b) => {
+      if (sortBy === 'score') return quickWinScore(b) - quickWinScore(a);
+      if (sortBy === 'impact') return b.impact - a.impact;
+      if (sortBy === 'time-desc') return b.timeMin - a.timeMin;
+      if (sortBy === 'quad') return a.quadrant.localeCompare(b.quadrant);
+      if (sortBy === 'title') return a.title.localeCompare(b.title, 'ko');
+      return 0;
+    });
 
     el.innerHTML = filtered.length === 0
       ? `<p style="text-align:center;color:var(--text2);padding:40px;">${cat} 업무가 없습니다.</p>`
