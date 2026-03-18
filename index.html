@@ -216,13 +216,13 @@ textarea { resize: vertical; min-height: 120px; }
         <!-- Document Upload -->
         <div id="docArea" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('docInput').click()" ondrop="handleDocDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent2)'" ondragleave="this.style.borderColor='var(--border)'">
           <div style="font-size:28px;margin-bottom:6px;">📄</div>
-          <div style="font-size:13px;color:var(--text2);">문서 업로드</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px;">.eml .docx .pdf .txt .md</div>
+          <div style="font-size:13px;color:var(--text2);">문서/엑셀 업로드</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">.eml .docx .pdf .txt .md .xlsx .csv</div>
         </div>
       </div>
 
       <input type="file" id="imgInput" style="display:none" accept="image/*" multiple onchange="handleImageSelect(event)">
-      <input type="file" id="docInput" style="display:none" accept=".eml,.msg,.docx,.pdf,.txt,.md,.rtf,.html,.htm" multiple onchange="handleDocSelect(event)">
+      <input type="file" id="docInput" style="display:none" accept=".eml,.msg,.docx,.pdf,.txt,.md,.rtf,.html,.htm,.xlsx,.xls,.csv,.tsv" multiple onchange="handleDocSelect(event)">
 
       <div id="ocrProgress" style="display:none;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:10px;">
@@ -247,7 +247,6 @@ textarea { resize: vertical; min-height: 120px; }
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
         <button class="btn-primary btn-sm" style="background:#f59e0b;color:#1e293b;" onclick="extractTasksFromDocs()">📄 AI 할일 추출</button>
-        <button class="btn-ghost btn-sm" onclick="document.getElementById('excelInput').click()">📊 엑셀/CSV</button>
         <button class="btn-ghost btn-sm" onclick="clearInput()">초기화</button>
       </div>
       <div class="parse-preview" id="parsePreview"></div>
@@ -1291,6 +1290,9 @@ async function processDocuments(files) {
       else if (ext === 'pdf') {
         text = await parsePdf(file);
       }
+      else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv' || ext === 'tsv') {
+        text = await parseExcel(file);
+      }
       else if (ext === 'html' || ext === 'htm') {
         const html = await file.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -1374,6 +1376,24 @@ async function parsePdf(file) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+async function parseExcel(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const data = new Uint8Array(arrayBuffer);
+  const wb = XLSX.read(data, { type: 'array' });
+  let text = '';
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    if (wb.SheetNames.length > 1) text += `[시트: ${name}]\n`;
+    for (const row of rows) {
+      const line = row.map(c => String(c || '').trim()).filter(c => c).join(' | ');
+      if (line) text += line + '\n';
+    }
+    text += '\n';
   }
   return text;
 }
