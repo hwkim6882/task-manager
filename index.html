@@ -172,6 +172,8 @@ textarea { resize: vertical; min-height: 120px; }
     </div>
   </header>
 
+  <div id="dashboard" style="display:flex;align-items:center;gap:16px;padding:12px 0;margin-bottom:8px;"></div>
+
   <div class="tab-bar">
     <button class="tab active" data-tab="input">업무 입력</button>
     <button class="tab" data-tab="matrix">매트릭스</button>
@@ -799,9 +801,32 @@ function addQuickParsedTasks() {
 
 // ===== RENDERING =====
 function renderAll() {
+  renderDashboard();
   renderMatrix();
   renderTasks();
   renderCategoryTabs();
+}
+
+function renderDashboard() {
+  const today = new Date().toISOString().slice(0, 10);
+  const doneToday = tasks.filter(t => t.done && t.doneAt && t.doneAt.slice(0, 10) === today).length;
+  const pending = tasks.filter(t => !t.done).length;
+  const el = document.getElementById('dashboard');
+
+  let msg = '';
+  if (doneToday === 0) msg = '오늘 첫 업무를 완료해보세요!';
+  else if (doneToday < 3) msg = '좋은 시작이에요!';
+  else if (doneToday < 5) msg = '잘 하고 있어요!';
+  else if (doneToday < 10) msg = '대단해요! 🔥';
+  else msg = '오늘의 영웅! 🏆';
+
+  el.innerHTML = `
+    <div style="font-size:36px;font-weight:800;color:var(--success);">${doneToday}</div>
+    <div>
+      <div style="font-size:14px;font-weight:600;">오늘 완료</div>
+      <div style="font-size:12px;color:var(--text2);">${msg} · 남은 업무 ${pending}건</div>
+    </div>
+  `;
 }
 
 function renderCategoryTabs() {
