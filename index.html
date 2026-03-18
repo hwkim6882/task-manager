@@ -315,6 +315,10 @@ textarea { resize: vertical; min-height: 120px; }
         <option value="quad">사분면순</option>
         <option value="created">입력순</option>
       </select>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn-ghost btn-sm" onclick="toggleSelectAll()">전체 선택</button>
+        <button class="btn-danger btn-sm" id="deleteSelectedBtn" style="display:none;" onclick="deleteSelected()">선택 삭제 (<span id="selectedCount">0</span>)</button>
+      </div>
     </div>
     <div class="task-list" id="taskList"></div>
   </div>
@@ -696,6 +700,7 @@ function renderTasks() {
     ? '<p style="text-align:center;color:var(--text2);padding:40px;">업무가 없습니다.</p>'
     : filtered.map(t => `
     <div class="task-item ${t.done?'done':''}">
+      <input type="checkbox" class="task-select" data-id="${t.id}" onchange="updateSelectedCount()" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">
       <div class="task-score">${t.done?'--':quickWinScore(t)}</div>
       <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
       <div class="task-body">
@@ -850,6 +855,35 @@ function saveEdit() {
   t.note = document.getElementById('editNote').value;
   saveTasks();
   closeEditModal();
+  renderAll();
+}
+
+// ===== SELECTION =====
+let selectedIds = new Set();
+
+function updateSelectedCount() {
+  const checks = document.querySelectorAll('.task-select');
+  selectedIds.clear();
+  checks.forEach(c => { if (c.checked) selectedIds.add(c.dataset.id); });
+  const btn = document.getElementById('deleteSelectedBtn');
+  const cnt = document.getElementById('selectedCount');
+  cnt.textContent = selectedIds.size;
+  btn.style.display = selectedIds.size > 0 ? '' : 'none';
+}
+
+function toggleSelectAll() {
+  const checks = document.querySelectorAll('.task-select');
+  const allChecked = Array.from(checks).every(c => c.checked);
+  checks.forEach(c => c.checked = !allChecked);
+  updateSelectedCount();
+}
+
+function deleteSelected() {
+  if (selectedIds.size === 0) return;
+  if (!confirm(`${selectedIds.size}건을 삭제할까요?`)) return;
+  tasks = tasks.filter(t => !selectedIds.has(String(t.id)));
+  selectedIds.clear();
+  saveTasks();
   renderAll();
 }
 
