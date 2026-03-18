@@ -242,9 +242,11 @@ textarea { resize: vertical; min-height: 120px; }
         <div>
           <label style="font-size:12px;color:var(--text2);">카테고리</label>
           <select id="singleCat">
-            <option value="업무">업무</option>
-            <option value="개인">개인</option>
+            <option value="로펌업무">로펌업무</option>
+            <option value="스타트업">스타트업</option>
             <option value="마케팅">마케팅</option>
+            <option value="개인">개인</option>
+            <option value="쇼핑">쇼핑</option>
           </select>
         </div>
         <div>
@@ -294,9 +296,11 @@ textarea { resize: vertical; min-height: 120px; }
       </select>
       <select id="filterCat" onchange="renderTasks()" style="width:auto;">
         <option value="all">전체 카테고리</option>
-        <option value="업무">업무</option>
-        <option value="개인">개인</option>
+        <option value="로펌업무">로펌업무</option>
+        <option value="스타트업">스타트업</option>
         <option value="마케팅">마케팅</option>
+        <option value="개인">개인</option>
+        <option value="쇼핑">쇼핑</option>
       </select>
       <select id="filterDone" onchange="renderTasks()" style="width:auto;">
         <option value="pending">미완료</option>
@@ -480,9 +484,11 @@ const DEFAULT_KEYWORDS = {
     q4: ['참고','나중에','언젠가','보류','정리','백업']
   },
   category: {
-    '업무': ['소송','재판','법원','심문','변론','기일','판결','항소','상고','고소','고발','형사','민사','경매','압류','강제집행','채권','채무','자문','검토','의견서','계약','계약서','법률','협상','MOU','NDA','약관','행정','타임시트','보고','회의','미팅','파트너','경비','청구','보험','스타트업','창업','투자','앱','서비스','개발','플랫폼','AI','인공지능'],
-    '개인': ['개인','병원','차량','BMW','미용','헬스','운동','가족','쇼핑'],
-    '마케팅': ['마케팅','블로그','포스팅','SNS','광고','영업','홍보','콘텐츠','세미나','네트워크','약속','식사','점심','저녁','미팅','모임','만남']
+    '로펌업무': ['소송','재판','법원','심문','변론','기일','판결','항소','상고','고소','고발','형사','민사','경매','압류','강제집행','채권','채무','자문','검토','의견서','계약','계약서','법률','협상','MOU','NDA','약관','행정','타임시트','보고','회의','파트너','경비','청구','보험'],
+    '스타트업': ['스타트업','창업','투자','앱','서비스','개발','플랫폼','AI','인공지능'],
+    '마케팅': ['마케팅','블로그','포스팅','SNS','광고','영업','홍보','콘텐츠','세미나','네트워크','연락','식사','점심','저녁','모임','만남','선물','약속'],
+    '개인': ['개인','병원','차량','BMW','미용','헬스','운동','가족','취미'],
+    '쇼핑': ['쇼핑','구매','주문','배송','택배','장바구니','결제','환불']
   },
   timeEstimate: {
     5: ['확인','체크','전화','문의'],
@@ -496,7 +502,7 @@ const DEFAULT_KEYWORDS = {
 let keywords = JSON.parse(localStorage.getItem('etm_keywords') || 'null') || DEFAULT_KEYWORDS;
 
 // ===== TASK MODEL =====
-function createTask(title, quad='q3', category='업무', timeMin=30, impact=3, note='') {
+function createTask(title, quad='q3', category='로펌업무', timeMin=30, impact=3, note='') {
   return {
     id: Date.now() + Math.random(),
     title,
@@ -520,7 +526,7 @@ function quickWinScore(task) {
 // ===== BULK PARSE =====
 function classifyText(text) {
   const lower = text.toLowerCase();
-  let quad = 'q3', cat = '업무', time = 30, impact = 3;
+  let quad = 'q3', cat = '로펌업무', time = 30, impact = 3;
 
   // Quadrant
   for (const [q, kws] of Object.entries(keywords.quadrant)) {
@@ -561,7 +567,7 @@ function parseBulk() {
         ${['q1','q2','q3','q4'].map(q => `<option value="${q}" ${item.quad===q?'selected':''}>${quadLabel(q)}</option>`).join('')}
       </select>
       <select onchange="parsedItems[${i}].cat=this.value">
-        ${['업무','개인','마케팅'].map(c => `<option ${item.cat===c?'selected':''}>${c}</option>`).join('')}
+        ${['로펌업무','스타트업','마케팅','개인','쇼핑'].map(c => `<option ${item.cat===c?'selected':''}>${c}</option>`).join('')}
       </select>
       <input type="number" value="${item.time}" onchange="parsedItems[${i}].time=+this.value" style="width:60px;" title="분">
       <button class="btn-ghost btn-sm" onclick="parsedItems.splice(${i},1);parseBulkRefresh()">X</button>
@@ -580,7 +586,7 @@ function parseBulkRefresh() {
         ${['q1','q2','q3','q4'].map(q => `<option value="${q}" ${item.quad===q?'selected':''}>${quadLabel(q)}</option>`).join('')}
       </select>
       <select onchange="parsedItems[${i}].cat=this.value">
-        ${['업무','개인','마케팅'].map(c => `<option ${item.cat===c?'selected':''}>${c}</option>`).join('')}
+        ${['로펌업무','스타트업','마케팅','개인','쇼핑'].map(c => `<option ${item.cat===c?'selected':''}>${c}</option>`).join('')}
       </select>
       <input type="number" value="${item.time}" onchange="parsedItems[${i}].time=+this.value" style="width:60px;">
       <button class="btn-ghost btn-sm" onclick="parsedItems.splice(${i},1);parseBulkRefresh()">X</button>
@@ -1112,7 +1118,7 @@ ${raw}`;
     parsedItems = items.map(item => ({
       title: item.title,
       quad: item.quad || 'q3',
-      cat: item.cat || '업무',
+      cat: item.cat || '로펌업무',
       time: item.time || 30,
       impact: item.impact || 3,
       note: item.note || ''
