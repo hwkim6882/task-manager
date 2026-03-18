@@ -1178,66 +1178,46 @@ async function aiDedup() {
   const taskListEl = document.getElementById('taskList');
   taskListEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:30px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">AI가 중복 업무를 분석 중...</span></div>';
 
-  const taskList = pending.map((t, i) => `- #${i} ${t.title.replace(/"/g,'')} [${t.category}]`).join('\n');
-
-  const prompt = `아래 업무 목록에서 중복되거나 매우 유사한 업무를 찾아주세요.
-
-중복 판단 기준:
-- 같은 일을 다른 표현으로 쓴 경우
-- 같은 사건/고객에 대해 거의 동일한 작업을 설명한 경우
-- 하나의 업무가 다른 업무에 완전히 포함되는 경우
-
-중복이 아닌 경우:
-- 같은 사건이라도 다른 작업이면 별개 업무
-- 유사해 보이지만 실제로 다른 작업
-
-중복 그룹을 JSON 배열로 반환 (# 뒤의 번호 사용):
-[{"keep_idx":0,"remove_indices":[3,7],"reason":"같은 작업"}]
-
-주의: keep_title 필드는 포함하지 마세요. 번호와 reason만 반환.
-중복이 없으면 빈 배열 []을 반환.
-JSON 배열만 반환하세요.
-
-업무 목록:
-${taskList}`;
+  // 30개씩 배치 처리
+  const BATCH = 30;
+  const toRemove = new Set();
+  const details = [];
 
   try {
-    const text = await callClaude(prompt);
-    const groups = parseAiJson(text);
+    for (let start = 0; start < pending.length; start += BATCH) {
+      const batch = pending.slice(start, start + BATCH);
+      const taskList = batch.map((t, i) => `${start+i}. ${t.title.replace(/["\n]/g,' ')}`).join('\n');
 
-    if (groups.length === 0) {
+      const text = await callClaude(
+        `업무 목록에서 중복/유사 항목을 찾아라. 같은 작업을 다르게 쓴 것, 포함관계만 중복이다. 같은 사건이라도 다른 작업은 중복 아님.\n\n${taskList}\n\n중복이 있으면 JSON: [{"keep":0,"del":[3,7]}]\n없으면: []\nJSON만 반환.`,
+        {maxTokens: 1024}
+      );
+
+      const groups = parseAiJson(text);
+      for (const g of groups) {
+        const delList = g.del || g.remove_indices || [];
+        for (const ri of delList) {
+          if (pending[ri]) {
+            toRemove.add(String(pending[ri].id));
+            const keepT = pending[g.keep || g.keep_idx];
+            details.push(`• ${keepT?keepT.title.substring(0,25):'?'} ← #${ri}`);
+          }
+        }
+      }
+    }
+
+    if (toRemove.size === 0) {
       renderTasks();
       return alert('중복 업무가 없습니다!');
     }
 
-    // 중복 제거 실행 (인덱스 → 실제 task 매핑)
-    let removed = 0;
-    const toRemove = new Set();
-    for (const group of groups) {
-      const keepIdx = group.keep_idx;
-      const removeIndices = group.remove_indices || [];
-      // keep_idx 확인
-      // 삭제할 업무 ID 수집
-      for (const ri of removeIndices) {
-        if (pending[ri]) {
-          toRemove.add(String(pending[ri].id));
-        }
-      }
-    }
-    // 한번에 삭제
     const beforeLen = tasks.length;
     tasks = tasks.filter(t => !toRemove.has(String(t.id)));
-    removed = beforeLen - tasks.length;
+    const removed = beforeLen - tasks.length;
 
     saveTasks();
     renderAll();
-
-    const detail = groups.map(g => {
-      const keepT = pending[g.keep_idx];
-      const name = keepT ? keepT.title.substring(0,30) : '?';
-      return `• ${name}: ${(g.remove_indices||[]).length}건 통합 (${g.reason||''})`;
-    }).join('\n');
-    alert(`${removed}건 중복 제거 완료!\n\n${detail}`);
+    alert(`${removed}건 중복 제거 완료!\n\n${details.slice(0,10).join('\n')}${details.length>10?'\n...외 '+(details.length-10)+'건':''}`);
 
   } catch (e) {
     renderTasks();
