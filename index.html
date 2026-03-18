@@ -214,6 +214,7 @@ textarea { resize: vertical; min-height: 120px; }
         <button class="btn-primary" onclick="parseBulk()">키워드 분류</button>
         <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
         <button class="btn-warning btn-sm" onclick="document.getElementById('imgInput').click()">📸 스크린샷 추가</button>
+        <button class="btn-ghost btn-sm" onclick="document.getElementById('excelInput').click()">📊 엑셀/CSV 가져오기</button>
         <button class="btn-ghost" onclick="clearInput()">초기화</button>
       </div>
       <div class="parse-preview" id="parsePreview"></div>
@@ -456,7 +457,9 @@ textarea { resize: vertical; min-height: 120px; }
 </div>
 
 <input type="file" id="fileInput" style="display:none" accept=".json" onchange="handleImport(event)">
+<input type="file" id="excelInput" style="display:none" accept=".csv,.tsv,.xlsx,.xls" onchange="handleExcelImport(event)">
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 // ===== DATA =====
 let tasks = JSON.parse(localStorage.getItem('etm_tasks') || '[]');
@@ -959,6 +962,53 @@ function switchTab(tabId) {
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
+
+// ===== EXCEL/CSV IMPORT =====
+function handleExcelImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      if (rows.length === 0) return alert('데이터가 없습니다.');
+
+      // 헤더 감지 (첫 행이 헤더인지 판단)
+      const header = rows[0].map(h => String(h || '').toLowerCase().trim());
+      const hasHeader = header.some(h => ['업무','제목','title','task','내용','할일','todo','name'].includes(h));
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+
+      // 컬럼 매핑 시도
+      let titleCol = 0;
+      if (hasHeader) {
+        const titleKeys = ['업무','제목','title','task','내용','할일','todo','name','업무명'];
+        titleCol = header.findIndex(h => titleKeys.includes(h));
+        if (titleCol === -1) titleCol = 0;
+      }
+
+      // 텍스트 추출하여 입력창에 추가
+      const lines = dataRows
+        .map(row => String(row[titleCol] || '').trim())
+        .filter(l => l.length > 1);
+
+      if (lines.length === 0) return alert('업무 항목을 찾을 수 없습니다.');
+
+      const textarea = document.getElementById('bulkInput');
+      const existing = textarea.value.trim();
+      textarea.value = existing ? existing + '\n' + lines.join('\n') : lines.join('\n');
+
+      alert(`${lines.length}건의 업무가 입력창에 추가되었습니다.\n"키워드 분류" 또는 "AI 분석" 버튼을 눌러 분류하세요.`);
+    } catch (err) {
+      alert('파일 읽기 실패: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+}
 
 // ===== CLAUDE API =====
 let claudeApiKey = localStorage.getItem('etm_claude_key') || '';
