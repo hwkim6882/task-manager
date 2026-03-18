@@ -178,6 +178,11 @@ textarea { resize: vertical; min-height: 120px; }
     <button class="tab active" data-tab="input">업무 입력</button>
     <button class="tab" data-tab="matrix">매트릭스</button>
     <button class="tab" data-tab="tasks">전체 업무</button>
+    <button class="tab" data-tab="cat-로펌업무">로펌업무</button>
+    <button class="tab" data-tab="cat-스타트업">스타트업</button>
+    <button class="tab" data-tab="cat-마케팅">마케팅</button>
+    <button class="tab" data-tab="cat-개인">개인</button>
+    <button class="tab" data-tab="cat-쇼핑">쇼핑</button>
     <button class="tab" data-tab="plan">액션 플랜</button>
     <button class="tab" data-tab="settings">설정</button>
   </div>
@@ -339,6 +344,13 @@ textarea { resize: vertical; min-height: 120px; }
     </div>
     <div class="task-list" id="taskList"></div>
   </div>
+
+  <!-- 카테고리별 탭 -->
+  <div class="panel" id="panel-cat-로펌업무"><div class="task-list" id="catList-로펌업무"></div></div>
+  <div class="panel" id="panel-cat-스타트업"><div class="task-list" id="catList-스타트업"></div></div>
+  <div class="panel" id="panel-cat-마케팅"><div class="task-list" id="catList-마케팅"></div></div>
+  <div class="panel" id="panel-cat-개인"><div class="task-list" id="catList-개인"></div></div>
+  <div class="panel" id="panel-cat-쇼핑"><div class="task-list" id="catList-쇼핑"></div></div>
 
   <!-- 4. 액션 플랜 -->
   <div class="panel" id="panel-plan">
@@ -716,6 +728,45 @@ function renderAll() {
   renderStats();
   renderMatrix();
   renderTasks();
+  renderCategoryTabs();
+}
+
+function renderCategoryTabs() {
+  const cats = ['로펌업무','스타트업','마케팅','개인','쇼핑'];
+  for (const cat of cats) {
+    const el = document.getElementById('catList-' + cat);
+    if (!el) continue;
+    const filtered = tasks.filter(t => t.category === cat && !t.done)
+      .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+
+    el.innerHTML = filtered.length === 0
+      ? `<p style="text-align:center;color:var(--text2);padding:40px;">${cat} 업무가 없습니다.</p>`
+      : filtered.map(t => `
+      <div class="task-item">
+        <input type="checkbox" class="task-select-cat" data-id="${t.id}" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">
+        <div class="task-score">${quickWinScore(t)}</div>
+        <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
+        <div class="task-body">
+          <div class="task-title">${escHtml(t.title)}</div>
+          <div class="task-meta">
+            <span class="tag tag-${t.quadrant}">${quadLabel(t.quadrant)}</span>
+            <span style="font-size:12px;color:var(--text2);">${t.timeMin}분 | 임팩트 ${t.impact}</span>
+          </div>
+        </div>
+        <div class="task-actions">
+          <button class="btn-ghost btn-sm" onclick="openEdit('${t.id}')">수정</button>
+          <button class="btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTask('${t.id}')">삭제</button>
+        </div>
+      </div>
+    `).join('');
+
+    // 탭 이름에 개수 표시
+    const tabBtn = document.querySelector(`.tab[data-tab="cat-${cat}"]`);
+    if (tabBtn) {
+      const count = filtered.length;
+      tabBtn.textContent = count > 0 ? `${cat} (${count})` : cat;
+    }
+  }
 }
 
 function renderStats() {
