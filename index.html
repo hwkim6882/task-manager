@@ -247,8 +247,7 @@ textarea { resize: vertical; min-height: 120px; }
         <textarea id="bulkInput" placeholder="파일에서 추출된 텍스트가 여기에 표시됩니다. 직접 붙여넣기도 가능합니다."></textarea>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
-        <button class="btn-primary btn-sm" style="background:#f59e0b;color:#1e293b;" onclick="extractTasksFromDocs()">📄 AI 할일 추출</button>
+        <button class="btn-primary" style="background:var(--accent2);" onclick="extractTasksFromDocs()">🤖 AI 할일 추출</button>
         <button class="btn-ghost btn-sm" onclick="clearInput()">초기화</button>
       </div>
       <div class="parse-preview" id="parsePreview"></div>
