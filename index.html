@@ -1337,6 +1337,13 @@ loadSettingsUI();
 loadClaudeSettings();
 renderAll();
 
+// 앱 시작 시 자동으로 파일 연결 팝업
+setTimeout(() => {
+  if (!fileHandle) {
+    openSyncFile();
+  }
+}, 500);
+
 // Keyboard shortcut
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeEditModal();
