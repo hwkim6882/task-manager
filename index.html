@@ -320,6 +320,7 @@ textarea { resize: vertical; min-height: 120px; }
         <option value="created">입력순</option>
       </select>
       <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn-ghost btn-sm" style="border-color:var(--accent2);color:var(--accent2);" onclick="aiDedup()">🤖 중복 정리</button>
         <button class="btn-ghost btn-sm" onclick="toggleSelectAll()">전체 선택</button>
         <button class="btn-danger btn-sm" id="deleteSelectedBtn" style="display:none;" onclick="deleteSelected()">선택 삭제 (<span id="selectedCount">0</span>)</button>
       </div>
@@ -1198,6 +1199,102 @@ JSON만 반환하세요.`;
 
   } catch (e) {
     planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// ===== AI DEDUP =====
+async function aiDedup() {
+  const pending = tasks.filter(t => !t.done);
+  if (pending.length < 2) return alert('업무가 2건 미만입니다.');
+  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+
+  const taskListEl = document.getElementById('taskList');
+  taskListEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:30px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">AI가 중복 업무를 분석 중...</span></div>';
+
+  const taskList = pending.map(t => `- id:${t.id} "${t.title}" [${t.category}]`).join('\n');
+
+  const prompt = `아래 업무 목록에서 중복되거나 매우 유사한 업무를 찾아주세요.
+
+중복 판단 기준:
+- 같은 일을 다른 표현으로 쓴 경우
+- 같은 사건/고객에 대해 거의 동일한 작업을 설명한 경우
+- 하나의 업무가 다른 업무에 완전히 포함되는 경우
+
+중복이 아닌 경우:
+- 같은 사건이라도 다른 작업이면 별개 업무
+- 유사해 보이지만 실제로 다른 작업
+
+중복 그룹을 JSON 배열로 반환하세요. 각 그룹에서 가장 적절한 제목을 keep_id로, 삭제할 것을 remove_ids로 지정:
+[
+  { "keep_id": 유지할업무id, "keep_title": "통합 제목", "remove_ids": [삭제할id1, 삭제할id2], "reason": "중복 사유" }
+]
+
+중복이 없으면 빈 배열 []을 반환하세요.
+JSON 배열만 반환하세요.
+
+업무 목록:
+${taskList}`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: claudeModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+    }
+
+    const result = await resp.json();
+    const text = result.content[0].text;
+    let jsonStr = text;
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) jsonStr = match[1];
+    const groups = JSON.parse(jsonStr.trim());
+
+    if (groups.length === 0) {
+      renderTasks();
+      return alert('중복 업무가 없습니다!');
+    }
+
+    // 중복 제거 실행
+    let removed = 0;
+    for (const group of groups) {
+      // 유지할 업무 제목 업데이트
+      const keepTask = tasks.find(t => String(t.id) === String(group.keep_id));
+      if (keepTask && group.keep_title) {
+        keepTask.title = group.keep_title;
+      }
+      // 중복 업무 삭제
+      for (const rid of group.remove_ids) {
+        const idx = tasks.findIndex(t => String(t.id) === String(rid));
+        if (idx > -1) {
+          tasks.splice(idx, 1);
+          removed++;
+        }
+      }
+    }
+
+    saveTasks();
+    renderAll();
+
+    const detail = groups.map(g => `• ${g.keep_title}: ${g.remove_ids.length}건 통합 (${g.reason})`).join('\n');
+    alert(`${removed}건 중복 제거 완료!\n\n${detail}`);
+
+  } catch (e) {
+    renderTasks();
+    alert('중복 정리 실패: ' + e.message);
   }
 }
 
