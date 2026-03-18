@@ -35,8 +35,9 @@ header h1 span { color: var(--accent); }
 .tab { padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text2); transition: all 0.2s; border: none; background: none; }
 .tab.active { background: var(--accent); color: white; }
 .tab:hover:not(.active) { color: var(--text); background: var(--surface2); }
-.group-header { background:var(--surface2); border-radius:10px; padding:12px 16px; margin:16px 0 8px; display:flex; justify-content:space-between; align-items:center; }
-.group-header h4 { font-size:14px; font-weight:600; color:var(--accent); }
+.group-section { background:var(--surface); border-radius:14px; padding:16px; margin-bottom:20px; border:1px solid var(--border); }
+.group-header { display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid var(--border); }
+.group-header h4 { font-size:15px; font-weight:700; color:var(--accent); }
 .group-header .group-meta { font-size:12px; color:var(--text2); }
 .tab.tab-drag-over { border-left: 3px solid var(--accent); }
 .tab.tab-dragging { opacity: 0.4; }
@@ -1265,10 +1266,16 @@ JSON 배열만 반환하세요.`;
       if (groupTasks.length === 0) continue;
 
       const totalTime = groupTasks.reduce((s, t) => s + t.timeMin, 0);
-      html += `<div class="group-header">
-        <h4>${escHtml(group.group)} (${groupTasks.length}건)</h4>
-        <span class="group-meta">총 ${totalTime}분</span>
-      </div>`;
+      const totalHours = Math.floor(totalTime / 60);
+      const totalMins = totalTime % 60;
+      const timeStr = totalHours > 0 ? `${totalHours}시간 ${totalMins}분` : `${totalMins}분`;
+
+      html += `<div class="group-section">
+        <div class="group-header">
+          <h4>${escHtml(group.group)} (${groupTasks.length}건)</h4>
+          <span class="group-meta">총 ${timeStr}</span>
+        </div>
+        <div class="task-list">`;
 
       for (const t of groupTasks) {
         html += `<div class="task-item">
@@ -1288,6 +1295,8 @@ JSON 배열만 반환하세요.`;
           </div>
         </div>`;
       }
+
+      html += `</div></div>`;
     }
 
     el.innerHTML = html;
