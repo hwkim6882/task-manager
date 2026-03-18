@@ -152,7 +152,6 @@ textarea { resize: vertical; min-height: 120px; }
   .tab { padding: 8px 12px; font-size: 12px; }
 }
 </style>
-</style>
 </head>
 <body>
 
@@ -160,7 +159,8 @@ textarea { resize: vertical; min-height: 120px; }
   <header>
     <h1><span>Executive</span> Task Manager</h1>
     <div class="header-actions">
-      <button class="btn-ghost btn-sm" id="syncBtn" onclick="connectSyncFile()" style="border-color:#22c55e;color:#22c55e;">📁 파일 연결</button>
+      <button class="btn-ghost btn-sm" id="syncNewBtn" onclick="createSyncFile()" style="border-color:#22c55e;color:#22c55e;">📁 새 파일 만들기</button>
+      <button class="btn-ghost btn-sm" id="syncOpenBtn" onclick="openSyncFile()" style="border-color:#3b82f6;color:#3b82f6;">📂 기존 파일 열기</button>
       <span id="syncStatus" style="font-size:11px;color:var(--text2);"></span>
       <button class="btn-ghost btn-sm" onclick="exportData()">JSON 내보내기</button>
       <button class="btn-ghost btn-sm" onclick="importData()">JSON 불러오기</button>
@@ -211,7 +211,8 @@ textarea { resize: vertical; min-height: 120px; }
         <textarea id="bulkInput" placeholder="예시:&#10;긴급 - 천현철 형사계약 검토&#10;퍼솔 회신 초안 작성&#10;케이비아이텍 경매 확인&#10;블로그 포스팅 작성&#10;BMW X5 브레이크 오일 교체&#10;&#10;또는 위에서 스크린샷을 업로드하면 자동으로 텍스트가 여기에 입력됩니다."></textarea>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn-primary" onclick="parseBulk()">분석 및 분류</button>
+        <button class="btn-primary" onclick="parseBulk()">키워드 분류</button>
+        <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
         <button class="btn-warning btn-sm" onclick="document.getElementById('imgInput').click()">📸 스크린샷 추가</button>
         <button class="btn-ghost" onclick="clearInput()">초기화</button>
       </div>
@@ -371,6 +372,25 @@ textarea { resize: vertical; min-height: 120px; }
       <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">일괄 입력 시 자동 분류에 사용되는 키워드입니다.</p>
       <div id="keywordRules"></div>
       <button class="btn-ghost btn-sm" style="margin-top:10px;" onclick="resetKeywords()">기본값 복원</button>
+    </div>
+
+    <div class="card">
+      <h3>Claude API 설정</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">업무 분석에 Claude AI를 사용합니다. API 키는 브라우저에만 저장됩니다.</p>
+      <div class="settings-grid" style="margin-top:12px;">
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" id="claudeApiKey" placeholder="sk-ant-..." value="">
+        </div>
+        <div class="form-group">
+          <label>모델</label>
+          <select id="claudeModel">
+            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (빠름)</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (저렴)</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary btn-sm" style="margin-top:12px;" onclick="saveClaudeSettings()">API 설정 저장</button>
     </div>
 
     <div class="card">
@@ -940,48 +960,134 @@ document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
 
+// ===== CLAUDE API =====
+let claudeApiKey = localStorage.getItem('etm_claude_key') || '';
+let claudeModel = localStorage.getItem('etm_claude_model') || 'claude-sonnet-4-6';
+
+function saveClaudeSettings() {
+  claudeApiKey = document.getElementById('claudeApiKey').value.trim();
+  claudeModel = document.getElementById('claudeModel').value;
+  localStorage.setItem('etm_claude_key', claudeApiKey);
+  localStorage.setItem('etm_claude_model', claudeModel);
+  alert('API 설정 저장됨');
+}
+
+function loadClaudeSettings() {
+  document.getElementById('claudeApiKey').value = claudeApiKey;
+  document.getElementById('claudeModel').value = claudeModel;
+}
+
+async function parseWithClaude() {
+  const raw = document.getElementById('bulkInput').value.trim();
+  if (!raw) return alert('텍스트를 입력해주세요.');
+  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+
+  const categories = Object.keys(keywords.category).join(', ');
+  const prompt = `당신은 법률사무소 변호사의 업무 관리 비서입니다. 아래 텍스트에서 개별 업무를 추출하고 분류해주세요.
+
+각 업무를 JSON 배열로 반환하세요. 각 항목:
+- title: 업무 제목 (간결하게)
+- quad: 사분면 (q1=긴급+중요, q2=중요+긴급아님, q3=긴급+중요아님, q4=둘다아님)
+- cat: 카테고리 (${categories} 중 하나)
+- time: 예상 소요시간(분)
+- impact: 임팩트 1-5
+- note: 추가 컨텍스트 (있으면)
+
+JSON 배열만 반환하세요. 다른 텍스트 없이.
+
+텍스트:
+${raw}`;
+
+  // Show loading
+  const preview = document.getElementById('parsePreview');
+  preview.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:20px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">Claude가 분석 중...</span></div>';
+  document.getElementById('parseActions').style.display = 'none';
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: claudeModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+    }
+
+    const result = await resp.json();
+    const text = result.content[0].text;
+
+    // Parse JSON from response (handle markdown code blocks)
+    let jsonStr = text;
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) jsonStr = match[1];
+    jsonStr = jsonStr.trim();
+
+    const items = JSON.parse(jsonStr);
+    parsedItems = items.map(item => ({
+      title: item.title,
+      quad: item.quad || 'q3',
+      cat: item.cat || '행정',
+      time: item.time || 30,
+      impact: item.impact || 3,
+      note: item.note || ''
+    }));
+
+    parseBulkRefresh();
+    document.getElementById('parseActions').style.display = 'block';
+
+  } catch (e) {
+    preview.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">AI 분석 실패: ${escHtml(e.message)}</div>`;
+  }
+}
+
 // ===== FILE SYNC (File System Access API) =====
 let fileHandle = null;
 
-async function connectSyncFile() {
+async function createSyncFile() {
   try {
-    // 파일 선택 또는 새로 만들기
-    const opts = {
+    fileHandle = await window.showSaveFilePicker({
       types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
       suggestedName: 'task-manager-data.json'
-    };
+    });
+    await writeToFile();
+    updateSyncUI(true);
+    alert('파일 생성 완료! 이 파일이 Synology Drive 폴더에 있으면 자동 동기화됩니다.');
+  } catch (e) {
+    if (e.name !== 'AbortError') alert('파일 생성 실패: ' + e.message);
+  }
+}
 
-    try {
-      // 기존 파일 열기 시도
-      [fileHandle] = await window.showOpenFilePicker(opts);
-    } catch (e) {
-      // 취소했으면 새 파일 만들기 제안
-      if (e.name === 'AbortError') {
-        if (confirm('기존 파일이 없으면 새로 만듭니다. 새 파일을 만들까요?')) {
-          fileHandle = await window.showSaveFilePicker(opts);
-          await writeToFile(); // 현재 데이터 저장
-        } else return;
-      } else throw e;
-    }
-
-    // 파일에서 데이터 읽기
+async function openSyncFile() {
+  try {
+    [fileHandle] = await window.showOpenFilePicker({
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+    });
     const file = await fileHandle.getFile();
     const text = await file.text();
     if (text.trim()) {
       const data = JSON.parse(text);
       if (data.tasks) tasks = data.tasks;
-      if (data.settings) { Object.assign(settings, data.settings); applySettings(); }
+      if (data.settings) { Object.assign(settings, data.settings); loadSettingsUI(); }
       if (data.keywords) keywords = data.keywords;
-      // LocalStorage에도 동기화
       localStorage.setItem('etm_tasks', JSON.stringify(tasks));
       localStorage.setItem('etm_settings', JSON.stringify(settings));
-      localStorage.setItem('etm_keywords', JSON.stringify(keywords)); writeToFile();
+      localStorage.setItem('etm_keywords', JSON.stringify(keywords));
       renderAll();
     }
-
     updateSyncUI(true);
   } catch (e) {
-    if (e.name !== 'AbortError') { alert('파일 연결 실패: ' + e.message); }
+    if (e.name !== 'AbortError') alert('파일 열기 실패: ' + e.message);
   }
 }
 
@@ -997,31 +1103,19 @@ async function writeToFile() {
   }
 }
 
-async function reloadFromFile() {
-  if (!fileHandle) return;
-  try {
-    const file = await fileHandle.getFile();
-    const text = await file.text();
-    if (text.trim()) {
-      const data = JSON.parse(text);
-      if (data.tasks) tasks = data.tasks;
-      if (data.settings) { Object.assign(settings, data.settings); applySettings(); }
-      if (data.keywords) keywords = data.keywords;
-      localStorage.setItem('etm_tasks', JSON.stringify(tasks));
-      renderAll();
-    }
-  } catch (e) { console.warn('파일 읽기 실패:', e); }
-}
-
 function updateSyncUI(connected) {
-  const btn = document.getElementById('syncBtn');
   const status = document.getElementById('syncStatus');
+  const newBtn = document.getElementById('syncNewBtn');
+  const openBtn = document.getElementById('syncOpenBtn');
   if (connected) {
-    btn.textContent = '✅ 동기화 중';
-    btn.style.borderColor = '#22c55e';
+    newBtn.textContent = '✅ 연결됨';
+    newBtn.style.borderColor = '#22c55e';
+    newBtn.onclick = createSyncFile;
+    openBtn.style.display = 'none';
     status.textContent = fileHandle.name;
   } else {
-    btn.textContent = '📁 파일 연결';
+    newBtn.textContent = '📁 새 파일 만들기';
+    openBtn.style.display = '';
     status.textContent = '';
   }
 }
@@ -1159,6 +1253,7 @@ document.addEventListener('paste', async (e) => {
 
 // ===== INIT =====
 loadSettingsUI();
+loadClaudeSettings();
 renderAll();
 
 // Keyboard shortcut
