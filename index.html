@@ -1203,7 +1203,7 @@ JSON 배열만 반환하세요.
 ${taskList}`;
 
   try {
-    const text = await callClaude(prompt, {model: HAIKU, maxTokens: 2048});
+    const text = await callClaude(prompt);
     const groups = parseAiJson(text);
 
     if (groups.length === 0) {
