@@ -1213,7 +1213,7 @@ async function aiDedup() {
   const taskListEl = document.getElementById('taskList');
   taskListEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:30px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">AI가 중복 업무를 분석 중...</span></div>';
 
-  const taskList = pending.map(t => `- id:${t.id} "${t.title}" [${t.category}]`).join('\n');
+  const taskList = pending.map((t, i) => `- #${i} "${t.title}" [${t.category}]`).join('\n');
 
   const prompt = `아래 업무 목록에서 중복되거나 매우 유사한 업무를 찾아주세요.
 
@@ -1226,9 +1226,9 @@ async function aiDedup() {
 - 같은 사건이라도 다른 작업이면 별개 업무
 - 유사해 보이지만 실제로 다른 작업
 
-중복 그룹을 JSON 배열로 반환하세요. 각 그룹에서 가장 적절한 제목을 keep_id로, 삭제할 것을 remove_ids로 지정:
+중복 그룹을 JSON 배열로 반환하세요 (# 뒤의 번호를 사용):
 [
-  { "keep_id": 유지할업무id, "keep_title": "통합 제목", "remove_ids": [삭제할id1, 삭제할id2], "reason": "중복 사유" }
+  { "keep_idx": 유지할번호, "keep_title": "통합 제목", "remove_indices": [삭제할번호1, 삭제할번호2], "reason": "중복 사유" }
 ]
 
 중복이 없으면 빈 배열 []을 반환하세요.
@@ -1270,23 +1270,27 @@ ${taskList}`;
       return alert('중복 업무가 없습니다!');
     }
 
-    // 중복 제거 실행
+    // 중복 제거 실행 (인덱스 → 실제 task 매핑)
     let removed = 0;
+    const toRemove = new Set();
     for (const group of groups) {
+      const keepIdx = group.keep_idx;
+      const removeIndices = group.remove_indices || [];
       // 유지할 업무 제목 업데이트
-      const keepTask = tasks.find(t => String(t.id) === String(group.keep_id));
-      if (keepTask && group.keep_title) {
-        keepTask.title = group.keep_title;
+      if (pending[keepIdx] && group.keep_title) {
+        pending[keepIdx].title = group.keep_title;
       }
-      // 중복 업무 삭제
-      for (const rid of group.remove_ids) {
-        const idx = tasks.findIndex(t => String(t.id) === String(rid));
-        if (idx > -1) {
-          tasks.splice(idx, 1);
-          removed++;
+      // 삭제할 업무 ID 수집
+      for (const ri of removeIndices) {
+        if (pending[ri]) {
+          toRemove.add(String(pending[ri].id));
         }
       }
     }
+    // 한번에 삭제
+    const beforeLen = tasks.length;
+    tasks = tasks.filter(t => !toRemove.has(String(t.id)));
+    removed = beforeLen - tasks.length;
 
     saveTasks();
     renderAll();
@@ -1309,7 +1313,7 @@ async function aiGroupByCase(cat) {
   const el = document.getElementById('catList-' + cat);
   el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:30px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">AI가 사건/프로젝트별로 그룹화 중...</span></div>';
 
-  const taskList = pending.map(t => `- id:${t.id} "${t.title}"`).join('\n');
+  const taskList = pending.map((t, i) => `- #${i} "${t.title}"`).join('\n');
 
   const prompt = `당신은 법률사무소의 업무 정리 전문가입니다.
 아래 업무 목록을 사건/프로젝트/고객별로 그룹화해주세요.
@@ -1322,14 +1326,14 @@ async function aiGroupByCase(cat) {
 5. 정말 어디에도 속하지 않는 업무만 "기타"로 묶으세요
 6. 그룹명은 "고객명 - 사건/프로젝트명" 형식으로 짧게
 
-예시: "박종건 투자자료 검토", "박종건 청산금 확인", "빛하늘의원 계좌 추적" → 모두 "박종건(빛하늘의원) 사건"
+예시: "#0 박종건 투자자료 검토", "#3 박종건 청산금 확인", "#7 빛하늘의원 계좌 추적" → 모두 "박종건(빛하늘의원) 사건" 그룹, indices: [0, 3, 7]
 
 업무 목록:
 ${taskList}
 
-JSON 배열로 반환:
+JSON 배열로 반환 (indices는 # 뒤의 번호):
 [
-  { "group": "그룹명", "task_ids": [id1, id2, ...] }
+  { "group": "그룹명", "indices": [0, 3, 7] }
 ]
 
 JSON 배열만 반환하세요.`;
@@ -1365,8 +1369,9 @@ JSON 배열만 반환하세요.`;
     // 그룹별로 렌더링
     let html = '';
     for (const group of groups) {
-      const groupTasks = group.task_ids
-        .map(id => pending.find(t => String(t.id) === String(id)))
+      const idxList = group.indices || group.task_ids || [];
+      const groupTasks = idxList
+        .map(idx => pending[idx])
         .filter(Boolean);
 
       if (groupTasks.length === 0) continue;
@@ -1418,7 +1423,7 @@ async function aiReclassifyMatrix() {
   if (pending.length === 0) return alert('미완료 업무가 없습니다.');
   if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
 
-  const taskList = pending.map(t => `- id:${t.id} "${t.title}" [카테고리: ${t.category}, 현재: ${quadLabel(t.quadrant)}]`).join('\n');
+  const taskList = pending.map((t, i) => `- #${i} "${t.title}" [카테고리: ${t.category}, 현재: ${quadLabel(t.quadrant)}]`).join('\n');
 
   const prompt = `당신은 법률사무소 변호사의 시간 관리 전문가입니다.
 아래 업무들을 Eisenhower Matrix(긴급/중요 매트릭스)로 정확하게 재분류해주세요.
@@ -1432,8 +1437,8 @@ async function aiReclassifyMatrix() {
 업무 목록:
 ${taskList}
 
-각 업무의 id와 적절한 사분면을 JSON 배열로 반환하세요:
-[{ "id": 업무id(숫자), "quad": "q1|q2|q3|q4", "reason": "분류 근거 (한 줄)" }]
+각 업무의 # 번호와 적절한 사분면을 JSON 배열로 반환하세요:
+[{ "idx": 번호, "quad": "q1|q2|q3|q4", "reason": "분류 근거 (한 줄)" }]
 
 JSON 배열만 반환하세요.`;
 
@@ -1473,7 +1478,7 @@ JSON 배열만 반환하세요.`;
 
     let changed = 0;
     for (const item of items) {
-      const t = tasks.find(t => String(t.id) === String(item.id));
+      const t = pending[item.idx];
       if (t && t.quadrant !== item.quad) {
         t.quadrant = item.quad;
         t.impact = {q1:5, q2:4, q3:2, q4:1}[item.quad] || 3;
