@@ -462,10 +462,10 @@ textarea { resize: vertical; min-height: 120px; }
           <input type="password" id="claudeApiKey" placeholder="sk-ant-..." value="">
         </div>
         <div class="form-group">
-          <label>모델</label>
+          <label>분석 모델 (할일 추출, 액션 플랜)</label>
           <select id="claudeModel">
-            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (빠름)</option>
-            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (저렴)</option>
+            <option value="claude-sonnet-4-6">Sonnet 4.6 (고품질)</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5 (저렴)</option>
           </select>
         </div>
       </div>
@@ -803,28 +803,7 @@ ${raw}`;
   document.getElementById('quickActions').style.display = 'none';
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
-    }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
+    const text = await callClaude(prompt);
     const items = parseAiJson(text);
     quickParsedItems = items.map(item => ({
       title: item.title,
@@ -937,26 +916,40 @@ function renderCategoryTabs() {
       return 0;
     });
 
-    el.innerHTML = filtered.length === 0
-      ? `<p style="text-align:center;color:var(--text2);padding:40px;">${cat} 업무가 없습니다.</p>`
-      : filtered.map(t => `
-      <div class="task-item">
-        <input type="checkbox" class="task-select-cat" data-id="${t.id}" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">
-        <div class="task-score">${quickWinScore(t)}</div>
-        <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
-        <div class="task-body">
-          <div class="task-title">${escHtml(t.title)}</div>
-          <div class="task-meta">
-            <span class="tag tag-${t.quadrant}">${quadLabel(t.quadrant)}</span>
-            <span style="font-size:12px;color:var(--text2);">${t.timeMin}분 | 임팩트 ${t.impact}</span>
-          </div>
-        </div>
-        <div class="task-actions">
-          <button class="btn-ghost btn-sm" onclick="openEdit('${t.id}')">수정</button>
-          <button class="btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTask('${t.id}')">삭제</button>
-        </div>
-      </div>
-    `).join('');
+    if (filtered.length === 0) {
+      el.innerHTML = `<p style="text-align:center;color:var(--text2);padding:40px;">${cat} 업무가 없습니다.</p>`;
+    } else {
+      // 그룹이 있는 업무가 있으면 그룹별로 렌더링
+      const hasGroups = filtered.some(t => t.caseGroup);
+      if (hasGroups) {
+        const groupMap = {};
+        for (const t of filtered) {
+          const g = t.caseGroup || '미분류';
+          if (!groupMap[g]) groupMap[g] = [];
+          groupMap[g].push(t);
+        }
+        let html = '';
+        for (const [groupName, groupTasks] of Object.entries(groupMap)) {
+          const totalTime = groupTasks.reduce((s, t) => s + t.timeMin, 0);
+          const totalHours = Math.floor(totalTime / 60);
+          const totalMins = totalTime % 60;
+          const timeStr = totalHours > 0 ? `${totalHours}시간 ${totalMins}분` : `${totalMins}분`;
+          html += `<div class="group-section">
+            <div class="group-header">
+              <h4>${escHtml(groupName)} (${groupTasks.length}건)</h4>
+              <span class="group-meta">총 ${timeStr}</span>
+            </div>
+            <div class="task-list">`;
+          for (const t of groupTasks) {
+            html += renderTaskItem(t);
+          }
+          html += `</div></div>`;
+        }
+        el.innerHTML = html;
+      } else {
+        el.innerHTML = filtered.map(t => renderTaskItem(t)).join('');
+      }
+    }
 
     // 탭 이름에 개수 표시
     const tabBtn = document.querySelector(`.tab[data-tab="cat-${cat}"]`);
@@ -1106,28 +1099,7 @@ JSON으로 반환하세요:
 JSON만 반환하세요.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
-    }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
+    const text = await callClaude(prompt);
     const data = parseAiJson(text);
 
     // AI가 재평가한 소요시간을 업무에 반영
@@ -1231,28 +1203,7 @@ JSON 배열만 반환하세요.
 ${taskList}`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
-    }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
+    const text = await callClaude(prompt, {model: HAIKU, maxTokens: 2048});
     const groups = parseAiJson(text);
 
     if (groups.length === 0) {
@@ -1329,75 +1280,20 @@ JSON 배열로 반환 (indices는 # 뒤의 번호):
 JSON 배열만 반환하세요.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
-    }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
+    const text = await callClaude(prompt, {model: HAIKU, maxTokens: 2048});
     const groups = parseAiJson(text);
 
-    // 그룹별로 렌더링
-    let html = '';
+    // 그룹 결과를 각 task에 저장
     for (const group of groups) {
       const idxList = group.indices || group.task_ids || [];
-      const groupTasks = idxList
-        .map(idx => pending[idx])
-        .filter(Boolean);
-
-      if (groupTasks.length === 0) continue;
-
-      const totalTime = groupTasks.reduce((s, t) => s + t.timeMin, 0);
-      const totalHours = Math.floor(totalTime / 60);
-      const totalMins = totalTime % 60;
-      const timeStr = totalHours > 0 ? `${totalHours}시간 ${totalMins}분` : `${totalMins}분`;
-
-      html += `<div class="group-section">
-        <div class="group-header">
-          <h4>${escHtml(group.group)} (${groupTasks.length}건)</h4>
-          <span class="group-meta">총 ${timeStr}</span>
-        </div>
-        <div class="task-list">`;
-
-      for (const t of groupTasks) {
-        html += `<div class="task-item">
-          <input type="checkbox" class="task-select-cat" data-id="${t.id}" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">
-          <div class="task-score">${quickWinScore(t)}</div>
-          <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
-          <div class="task-body">
-            <div class="task-title">${escHtml(t.title)}</div>
-            <div class="task-meta">
-              <span class="tag tag-${t.quadrant}">${quadLabel(t.quadrant)}</span>
-              <span style="font-size:12px;color:var(--text2);">${t.timeMin}분 | 임팩트 ${t.impact}</span>
-            </div>
-          </div>
-          <div class="task-actions">
-            <button class="btn-ghost btn-sm" onclick="openEdit('${t.id}')">수정</button>
-            <button class="btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTask('${t.id}')">삭제</button>
-          </div>
-        </div>`;
+      for (const idx of idxList) {
+        if (pending[idx]) {
+          pending[idx].caseGroup = group.group;
+        }
       }
-
-      html += `</div></div>`;
     }
-
-    el.innerHTML = html;
+    saveTasks();
+    renderCategoryTabs();
 
   } catch (e) {
     el.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">그룹화 실패: ${escHtml(e.message)}</div>`;
@@ -1436,28 +1332,7 @@ JSON 배열만 반환하세요.`;
   document.querySelector('#quad-q1 .quad-tasks').innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;"><div class="spinner"></div><span style="font-size:13px;color:var(--accent2);">AI가 재분류 중...</span></div>';
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
-    }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
+    const text = await callClaude(prompt, {model: HAIKU, maxTokens: 2048});
     const items = parseAiJson(text);
 
     let changed = 0;
@@ -1842,29 +1717,7 @@ ${raw.substring(0, 8000)}`;
   document.getElementById('parseActions').style.display = 'none';
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': claudeApiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: claudeModel,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
-    }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
-
+    const text = await callClaude(prompt);
     const items = parseAiJson(text);
     parsedItems = items.map(item => ({
       title: item.title,
@@ -1967,6 +1820,51 @@ function saveClaudeSettings() {
 function loadClaudeSettings() {
   document.getElementById('claudeApiKey').value = claudeApiKey;
   document.getElementById('claudeModel').value = claudeModel;
+}
+
+// ===== CLAUDE API HELPER =====
+const HAIKU = 'claude-haiku-4-5-20251001';
+async function callClaude(prompt, {model, maxTokens} = {}) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': claudeApiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: model || claudeModel,
+      max_tokens: maxTokens || 4096,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.json();
+    throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+  }
+  const result = await resp.json();
+  return result.content[0].text;
+}
+
+function renderTaskItem(t) {
+  return `<div class="task-item ${t.done?'done':''}">
+    <input type="checkbox" class="task-select-cat" data-id="${t.id}" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">
+    <div class="task-score">${t.done?'--':quickWinScore(t)}</div>
+    <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
+    <div class="task-body">
+      <div class="task-title">${escHtml(t.title)}</div>
+      <div class="task-meta">
+        <span class="tag tag-${t.quadrant}">${quadLabel(t.quadrant)}</span>
+        <span class="tag tag-cat">${t.category}</span>
+        <span style="font-size:12px;color:var(--text2);">${t.timeMin}분 | 임팩트 ${t.impact}</span>
+      </div>
+    </div>
+    <div class="task-actions">
+      <button class="btn-ghost btn-sm" onclick="openEdit('${t.id}')">수정</button>
+      <button class="btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTask('${t.id}')">삭제</button>
+    </div>
+  </div>`;
 }
 
 function parseAiJson(text) {
