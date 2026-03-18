@@ -260,7 +260,10 @@ textarea { resize: vertical; min-height: 120px; }
   <!-- 2. 매트릭스 -->
   <div class="panel" id="panel-matrix">
     <div class="card">
-      <h3>Eisenhower Matrix</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3>Eisenhower Matrix</h3>
+        <button class="btn-primary btn-sm" style="background:var(--accent2);" onclick="aiReclassifyMatrix()">🤖 AI 재분류</button>
+      </div>
       <div class="matrix">
         <div class="matrix-header"><span>긴급</span><span>긴급하지 않음</span></div>
         <div class="quadrant q1" id="quad-q1" ondrop="dropTask(event,'q1')" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
@@ -1116,6 +1119,85 @@ JSON만 반환하세요.`;
 
   } catch (e) {
     planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// ===== AI MATRIX RECLASSIFY =====
+async function aiReclassifyMatrix() {
+  const pending = tasks.filter(t => !t.done);
+  if (pending.length === 0) return alert('미완료 업무가 없습니다.');
+  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+
+  const taskList = pending.map(t => `- id:${t.id} "${t.title}" [카테고리: ${t.category}, 현재: ${quadLabel(t.quadrant)}]`).join('\n');
+
+  const prompt = `당신은 법률사무소 변호사의 시간 관리 전문가입니다.
+아래 업무들을 Eisenhower Matrix(긴급/중요 매트릭스)로 정확하게 재분류해주세요.
+
+분류 기준:
+- Q1 (긴급+중요): 마감이 임박하거나 즉시 대응해야 하는 중요 업무. 재판, 긴급 계약, 고객 요청 등
+- Q2 (중요+긴급아님): 장기적으로 중요하지만 당장 급하지 않은 업무. 전략 수립, 역량 개발, 관계 구축 등
+- Q3 (긴급+중요아님): 빨리 해야 하지만 중요도가 낮은 업무. 단순 회신, 전달, 행정 처리 등
+- Q4 (긴급아님+중요아님): 급하지도 중요하지도 않은 업무. 정리, 참고, 나중에 해도 되는 것
+
+업무 목록:
+${taskList}
+
+각 업무의 id와 적절한 사분면을 JSON 배열로 반환하세요:
+[{ "id": 업무id(숫자), "quad": "q1|q2|q3|q4", "reason": "분류 근거 (한 줄)" }]
+
+JSON 배열만 반환하세요.`;
+
+  // 로딩 표시
+  for (const q of ['q1','q2','q3','q4']) {
+    document.querySelector(`#quad-${q} .quad-tasks`).innerHTML = '';
+  }
+  document.querySelector('#quad-q1 .quad-tasks').innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:12px;"><div class="spinner"></div><span style="font-size:13px;color:var(--accent2);">AI가 재분류 중...</span></div>';
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: claudeModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+    }
+
+    const result = await resp.json();
+    const text = result.content[0].text;
+    let jsonStr = text;
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) jsonStr = match[1];
+    const items = JSON.parse(jsonStr.trim());
+
+    let changed = 0;
+    for (const item of items) {
+      const t = tasks.find(t => String(t.id) === String(item.id));
+      if (t && t.quadrant !== item.quad) {
+        t.quadrant = item.quad;
+        t.impact = {q1:5, q2:4, q3:2, q4:1}[item.quad] || 3;
+        changed++;
+      }
+    }
+
+    saveTasks();
+    renderAll();
+    alert(`AI 재분류 완료! ${changed}건 변경됨`);
+
+  } catch (e) {
+    renderMatrix();
+    alert('AI 재분류 실패: ' + e.message);
   }
 }
 
