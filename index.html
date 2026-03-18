@@ -8,6 +8,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <style>
 :root {
   --bg: #0f172a;
@@ -209,15 +211,30 @@ textarea { resize: vertical; min-height: 120px; }
       </div>
       <div id="ocrImageList" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
 
+      <!-- Document Upload Area -->
+      <div id="docArea" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;margin-bottom:12px;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('docInput').click()" ondrop="handleDocDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent2)'" ondragleave="this.style.borderColor='var(--border)'">
+        <div style="font-size:28px;margin-bottom:6px;">📄</div>
+        <div style="font-size:14px;color:var(--text2);">이메일, 워드, PDF, 메모 파일을 드래그하거나 클릭</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px;">.eml .msg .docx .pdf .txt .md 지원</div>
+      </div>
+      <input type="file" id="docInput" style="display:none" accept=".eml,.msg,.docx,.pdf,.txt,.md,.rtf,.html,.htm" multiple onchange="handleDocSelect(event)">
+      <div id="docProgress" style="display:none;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="spinner"></div>
+          <span id="docStatus" style="font-size:13px;color:var(--accent2);">문서에서 텍스트 추출 중...</span>
+        </div>
+      </div>
+
       <div class="bulk-area">
         <textarea id="bulkInput" placeholder="예시:&#10;긴급 - 천현철 형사계약 검토&#10;퍼솔 회신 초안 작성&#10;케이비아이텍 경매 확인&#10;블로그 포스팅 작성&#10;BMW X5 브레이크 오일 교체&#10;&#10;또는 위에서 스크린샷을 업로드하면 자동으로 텍스트가 여기에 입력됩니다."></textarea>
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button class="btn-primary" onclick="parseBulk()">키워드 분류</button>
         <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
-        <button class="btn-warning btn-sm" onclick="document.getElementById('imgInput').click()">📸 스크린샷 추가</button>
-        <button class="btn-ghost btn-sm" onclick="document.getElementById('excelInput').click()">📊 엑셀/CSV 가져오기</button>
-        <button class="btn-ghost" onclick="clearInput()">초기화</button>
+        <button class="btn-primary btn-sm" style="background:#f59e0b;color:#1e293b;" onclick="extractTasksFromDocs()">📄 AI 할일 추출</button>
+        <button class="btn-warning btn-sm" onclick="document.getElementById('imgInput').click()">📸 스크린샷</button>
+        <button class="btn-ghost btn-sm" onclick="document.getElementById('excelInput').click()">📊 엑셀/CSV</button>
+        <button class="btn-ghost btn-sm" onclick="clearInput()">초기화</button>
       </div>
       <div class="parse-preview" id="parsePreview"></div>
       <div id="parseActions" style="display:none;margin-top:12px;">
@@ -1053,6 +1070,221 @@ function resetKeywords() {
   keywords = JSON.parse(JSON.stringify(DEFAULT_KEYWORDS));
   localStorage.setItem('etm_keywords', JSON.stringify(keywords)); saveToFirestore();
   alert('키워드 규칙 초기화됨');
+}
+
+// ===== DOCUMENT PARSING =====
+let docTexts = []; // 업로드된 문서 텍스트 저장
+
+function handleDocSelect(e) {
+  const files = Array.from(e.target.files);
+  if (files.length) processDocuments(files);
+  e.target.value = '';
+}
+
+function handleDocDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.borderColor = 'var(--border)';
+  const files = Array.from(e.dataTransfer.files);
+  if (files.length) processDocuments(files);
+}
+
+async function processDocuments(files) {
+  const progress = document.getElementById('docProgress');
+  const status = document.getElementById('docStatus');
+  progress.style.display = 'block';
+
+  for (const file of files) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    status.textContent = `${file.name} 처리 중...`;
+
+    try {
+      let text = '';
+
+      if (ext === 'txt' || ext === 'md' || ext === 'rtf') {
+        text = await file.text();
+      }
+      else if (ext === 'eml' || ext === 'msg') {
+        text = await parseEmail(file);
+      }
+      else if (ext === 'docx') {
+        text = await parseDocx(file);
+      }
+      else if (ext === 'pdf') {
+        text = await parsePdf(file);
+      }
+      else if (ext === 'html' || ext === 'htm') {
+        const html = await file.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        text = doc.body.textContent || '';
+      }
+
+      if (text.trim()) {
+        docTexts.push({ name: file.name, text: text.trim() });
+        // 텍스트를 입력창에 추가
+        const textarea = document.getElementById('bulkInput');
+        const existing = textarea.value.trim();
+        const header = `\n--- ${file.name} ---\n`;
+        textarea.value = existing ? existing + header + text.trim() : text.trim();
+      }
+
+      status.textContent = `${file.name} 완료!`;
+    } catch (err) {
+      status.textContent = `${file.name} 오류: ${err.message}`;
+    }
+  }
+
+  setTimeout(() => { progress.style.display = 'none'; }, 2000);
+}
+
+async function parseEmail(file) {
+  const raw = await file.text();
+  // EML 파싱: 헤더(Subject, From, Date) + 본문 추출
+  const lines = raw.split(/\r?\n/);
+  let subject = '', from = '', date = '', body = '';
+  let inHeader = true, inBody = false;
+  let boundary = '';
+
+  for (const line of lines) {
+    if (inHeader) {
+      if (line.match(/^Subject:\s*/i)) subject = line.replace(/^Subject:\s*/i, '');
+      else if (line.match(/^From:\s*/i)) from = line.replace(/^From:\s*/i, '');
+      else if (line.match(/^Date:\s*/i)) date = line.replace(/^Date:\s*/i, '');
+      else if (line.match(/^Content-Type:.*boundary="?([^";\s]+)/i)) {
+        boundary = RegExp.$1;
+      }
+      else if (line === '') { inHeader = false; inBody = true; }
+    } else if (inBody) {
+      body += line + '\n';
+    }
+  }
+
+  // MIME 본문에서 text/plain 부분 추출
+  if (boundary && body.includes(boundary)) {
+    const parts = body.split(new RegExp('--' + boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    for (const part of parts) {
+      if (part.includes('text/plain')) {
+        const idx = part.indexOf('\n\n');
+        if (idx > -1) {
+          body = part.substring(idx + 2);
+          break;
+        }
+      }
+    }
+  }
+
+  // Base64 디코딩 시도
+  if (body.match(/^[A-Za-z0-9+/=\s]+$/) && body.length > 50) {
+    try { body = decodeURIComponent(escape(atob(body.replace(/\s/g, '')))); } catch(e) {}
+  }
+
+  return `[이메일] 제목: ${subject}\n보낸이: ${from}\n날짜: ${date}\n\n${body}`.trim();
+}
+
+async function parseDocx(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value;
+}
+
+async function parsePdf(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+// Claude AI로 문서에서 할 일 추출
+async function extractTasksFromDocs() {
+  const raw = document.getElementById('bulkInput').value.trim();
+  if (!raw) return alert('먼저 문서를 업로드하거나 텍스트를 입력해주세요.');
+  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+
+  const categories = Object.keys(keywords.category).join(', ');
+  const prompt = `당신은 법률사무소 변호사의 업무 비서입니다. 아래 텍스트는 이메일, 회의록, 메모, 문서 등에서 추출한 내용입니다.
+
+이 텍스트를 분석해서 **내가 해야 할 일(Action Items)**만 추출해주세요.
+
+추출 기준:
+- 명시적 요청/지시 사항 ("~해주세요", "~필요", "~확인 바람", "~검토")
+- 마감일이 있는 항목
+- 회신/답변이 필요한 사항
+- 후속 조치가 필요한 내용
+- 구매/주문 해야 할 것
+- 약속/미팅 일정
+
+추출하지 않을 것:
+- 단순 정보 전달 (참고용)
+- 이미 완료된 사항
+- 상대방이 할 일 (내가 아닌)
+
+각 할 일을 JSON 배열로 반환하세요:
+- title: 업무 제목 (구체적이고 간결하게)
+- quad: 사분면 (q1=긴급+중요, q2=중요+긴급아님, q3=긴급+중요아님, q4=둘다아님)
+- cat: 카테고리 (${categories} 중 하나)
+- time: 예상 소요시간(분)
+- impact: 임팩트 1-5
+- note: 출처 또는 관련 맥락 (어떤 이메일/문서에서 왔는지)
+
+JSON 배열만 반환하세요.
+
+텍스트:
+${raw.substring(0, 8000)}`;
+
+  const preview = document.getElementById('parsePreview');
+  preview.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:20px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">Claude가 할 일을 추출 중...</span></div>';
+  document.getElementById('parseActions').style.display = 'none';
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: claudeModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+    }
+
+    const result = await resp.json();
+    const text = result.content[0].text;
+
+    let jsonStr = text;
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) jsonStr = match[1];
+    jsonStr = jsonStr.trim();
+
+    const items = JSON.parse(jsonStr);
+    parsedItems = items.map(item => ({
+      title: item.title,
+      quad: item.quad || 'q3',
+      cat: item.cat || '로펌업무',
+      time: item.time || 30,
+      impact: item.impact || 3,
+      note: item.note || ''
+    }));
+
+    parseBulkRefresh();
+    document.getElementById('parseActions').style.display = 'block';
+
+  } catch (e) {
+    preview.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">할 일 추출 실패: ${escHtml(e.message)}</div>`;
+  }
 }
 
 // ===== TABS =====
