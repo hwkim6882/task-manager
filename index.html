@@ -2,7 +2,10 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
 <title>Executive Task Manager - 형우님 업무 매니저</title>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -157,12 +160,26 @@ textarea { resize: vertical; min-height: 120px; }
 .ocr-thumb.done img { border-color:var(--success); }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
+/* Toast */
+.toast { position:fixed; bottom:20px; right:20px; background:var(--surface2); color:var(--text); padding:14px 20px; border-radius:10px; font-size:14px; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.3); animation:slideIn 0.3s; max-width:400px; }
+@keyframes slideIn { from{transform:translateY(100px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+/* Sticky tab bar */
+.tab-bar { position: sticky; top: 0; z-index: 50; }
+
 /* Responsive */
 @media (max-width: 768px) {
   .matrix { grid-template-columns: 1fr; }
   .stats { grid-template-columns: 1fr 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
   .tab { padding: 8px 12px; font-size: 12px; }
+  .header-actions { flex-wrap: wrap; gap: 6px; }
+  .task-item { flex-wrap: wrap; }
+  .task-actions { width: 100%; justify-content: flex-end; margin-top: 8px; }
+  .task-score { font-size: 16px; width: 36px; }
+  .group-section { padding: 12px; margin-bottom: 16px; }
+  .task-check { width: 24px; height: 24px; }
+  button, select { min-height: 44px; }
 }
 </style>
 </head>
@@ -549,6 +566,7 @@ const firebaseConfig = {
   appId: "1:565340430065:web:a610e3c4a85a333b669350"
 };
 firebase.initializeApp(firebaseConfig);
+firebase.firestore().enablePersistence({synchronizeTabs: true}).catch(e => console.warn('Offline persistence failed:', e));
 const auth = firebase.auth();
 const db = firebase.firestore();
 let currentUser = null;
@@ -598,6 +616,9 @@ function loadFromFirestore() {
       }
       renderAll();
     }
+  }, err => {
+    console.error('Firestore onSnapshot error:', err);
+    showToast('실시간 동기화 오류: ' + err.message, 5000);
   });
 }
 
@@ -669,10 +690,15 @@ function createTask(title, quad='q3', category='로펌업무', timeMin=30, impac
   };
 }
 
+const _scoreCache = new Map();
 function quickWinScore(task) {
   if (task.done) return 0;
+  const key = `${task.id}_${task.impact}_${task.quadrant}_${task.timeMin}`;
+  if (_scoreCache.has(key)) return _scoreCache.get(key);
   const quadBonus = {q1:2, q2:1.5, q3:1, q4:0.5}[task.quadrant] || 1;
-  return ((task.impact * quadBonus) / Math.sqrt(Math.max(task.timeMin, 1))).toFixed(2);
+  const score = ((task.impact * quadBonus) / Math.sqrt(Math.max(task.timeMin, 1))).toFixed(2);
+  _scoreCache.set(key, score);
+  return score;
 }
 
 // ===== BULK PARSE =====
@@ -869,11 +895,24 @@ function addQuickParsedTasks() {
 }
 
 // ===== RENDERING =====
+let _renderTimer;
 function renderAll() {
+  clearTimeout(_renderTimer);
+  _renderTimer = setTimeout(_renderAllNow, 50);
+}
+function _renderAllNow() {
   renderDashboard();
   renderMatrix();
   renderTasks();
   renderCategoryTabs();
+}
+
+function showToast(msg, duration=3000) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.3s'; setTimeout(() => t.remove(), 300); }, duration);
 }
 
 function renderDashboard() {
@@ -1730,6 +1769,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 // ===== HELPERS =====
 function saveTasks() {
+  _scoreCache.clear();
   localStorage.setItem('etm_tasks', JSON.stringify(tasks));
   saveToFirestore();
 }
@@ -1805,26 +1845,36 @@ function loadClaudeSettings() {
 // ===== CLAUDE API HELPER =====
 const HAIKU = 'claude-haiku-4-5-20251001';
 async function callClaude(prompt, {model, maxTokens} = {}) {
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': claudeApiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: model || claudeModel,
-      max_tokens: maxTokens || 4096,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  if (!resp.ok) {
-    const err = await resp.json();
-    throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: model || claudeModel,
+        max_tokens: maxTokens || 4096,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    clearTimeout(timeoutId);
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
+    }
+    const result = await resp.json();
+    return result.content[0].text;
+  } catch(e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') throw new Error('AI 응답 시간 초과 (30초). 다시 시도해주세요.');
+    throw e;
   }
-  const result = await resp.json();
-  return result.content[0].text;
 }
 
 function renderTaskItem(t) {
@@ -2070,6 +2120,11 @@ function restoreTabOrder(order) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeEditModal();
 });
+
+// PWA Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW:', e));
+}
 </script>
 </body>
 </html>
