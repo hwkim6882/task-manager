@@ -522,6 +522,10 @@ function loadFromFirestore() {
       if (data.tasks) tasks = data.tasks;
       if (data.settings) { Object.assign(settings, data.settings); loadSettingsUI(); }
       if (data.keywords) keywords = data.keywords;
+      if (data.tabOrder) {
+        localStorage.setItem('etm_tab_order', JSON.stringify(data.tabOrder));
+        restoreTabOrder(data.tabOrder);
+      }
       renderAll();
     }
   });
@@ -535,6 +539,7 @@ function saveToFirestore() {
   saveTimer = setTimeout(() => {
     db.collection('users').doc(currentUser.uid).set({
       tasks, settings, keywords,
+      tabOrder: JSON.parse(localStorage.getItem('etm_tab_order') || 'null'),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   }, 500);
@@ -672,9 +677,17 @@ function parseBulkRefresh() {
   if (parsedItems.length === 0) document.getElementById('parseActions').style.display = 'none';
 }
 
+function isDuplicate(title) {
+  const norm = title.trim().toLowerCase().replace(/\s+/g, '');
+  return tasks.some(t => t.title.trim().toLowerCase().replace(/\s+/g, '') === norm);
+}
+
 function addParsedTasks() {
+  let added = 0, skipped = 0;
   for (const item of parsedItems) {
+    if (isDuplicate(item.title)) { skipped++; continue; }
     tasks.push(createTask(item.title, item.quad, item.cat, item.time, item.impact));
+    added++;
   }
   saveTasks();
   parsedItems = [];
@@ -682,6 +695,7 @@ function addParsedTasks() {
   document.getElementById('parseActions').style.display = 'none';
   document.getElementById('bulkInput').value = '';
   renderAll();
+  if (skipped > 0) alert(`${added}건 추가, ${skipped}건 중복 제외`);
   switchTab('tasks');
 }
 
@@ -788,8 +802,11 @@ function quickAiRefresh() {
 }
 
 function addQuickParsedTasks() {
+  let added = 0, skipped = 0;
   for (const item of quickParsedItems) {
+    if (isDuplicate(item.title)) { skipped++; continue; }
     tasks.push(createTask(item.title, item.quad, item.cat, item.time, item.impact));
+    added++;
   }
   saveTasks();
   quickParsedItems = [];
@@ -797,6 +814,7 @@ function addQuickParsedTasks() {
   document.getElementById('quickActions').style.display = 'none';
   document.getElementById('quickInput').value = '';
   renderAll();
+  if (skipped > 0) alert(`${added}건 추가, ${skipped}건 중복 제외`);
   switchTab('tasks');
 }
 
@@ -1815,6 +1833,7 @@ renderAll();
     // 탭 순서 저장
     const order = Array.from(bar.querySelectorAll('.tab')).map(t => t.dataset.tab);
     localStorage.setItem('etm_tab_order', JSON.stringify(order));
+    saveToFirestore();
   });
 
   bar.addEventListener('dragover', e => {
@@ -1845,13 +1864,19 @@ renderAll();
 
   // 저장된 순서 복원
   const saved = JSON.parse(localStorage.getItem('etm_tab_order') || 'null');
-  if (saved) {
-    for (const tabId of saved) {
-      const tab = bar.querySelector(`.tab[data-tab="${tabId}"]`);
-      if (tab) bar.appendChild(tab);
-    }
-  }
+  if (saved) restoreTabOrder(saved);
 })();
+
+function restoreTabOrder(order) {
+  const bar = document.getElementById('tabBar');
+  for (const tabId of order) {
+    const tab = bar.querySelector(`.tab[data-tab="${tabId}"]`);
+    if (tab) bar.appendChild(tab);
+  }
+  bar.querySelectorAll('.tab').forEach(tab => {
+    tab.onclick = () => switchTab(tab.dataset.tab);
+  });
+}
 
 // Keyboard shortcut
 document.addEventListener('keydown', e => {
