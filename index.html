@@ -190,63 +190,6 @@ textarea { resize: vertical; min-height: 120px; }
   <!-- 1. 업무 입력 -->
   <div class="panel active" id="panel-input">
     <div class="card">
-      <h3>업무 일괄 입력</h3>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">할 일 목록, 이메일 내용, 메모 등을 줄 단위로 붙여넣거나 <b>스크린샷을 업로드</b>하세요.</p>
-
-      <!-- Screenshot Upload Area -->
-      <div id="screenshotArea" style="border:2px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:12px;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('imgInput').click()" ondrop="handleImageDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'">
-        <div id="screenshotPlaceholder">
-          <div style="font-size:32px;margin-bottom:8px;">📸</div>
-          <div style="font-size:14px;color:var(--text2);">스크린샷을 드래그하거나 클릭해서 업로드</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:4px;">Google Tasks, 이메일, 메모 앱 등의 캡처 이미지</div>
-        </div>
-        <div id="screenshotPreview" style="display:none;">
-          <img id="previewImg" style="max-width:100%;max-height:300px;border-radius:8px;">
-        </div>
-      </div>
-      <input type="file" id="imgInput" style="display:none" accept="image/*" multiple onchange="handleImageSelect(event)">
-      <div id="ocrProgress" style="display:none;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div class="spinner"></div>
-          <span id="ocrStatus" style="font-size:13px;color:var(--accent);">이미지에서 텍스트 추출 중...</span>
-        </div>
-        <div style="background:var(--surface2);border-radius:4px;height:6px;margin-top:8px;overflow:hidden;">
-          <div id="ocrBar" style="background:var(--accent);height:100%;width:0%;transition:width 0.3s;"></div>
-        </div>
-      </div>
-      <div id="ocrImageList" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
-
-      <!-- Document Upload Area -->
-      <div id="docArea" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;margin-bottom:12px;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('docInput').click()" ondrop="handleDocDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent2)'" ondragleave="this.style.borderColor='var(--border)'">
-        <div style="font-size:28px;margin-bottom:6px;">📄</div>
-        <div style="font-size:14px;color:var(--text2);">이메일, 워드, PDF, 메모 파일을 드래그하거나 클릭</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:4px;">.eml .msg .docx .pdf .txt .md 지원</div>
-      </div>
-      <input type="file" id="docInput" style="display:none" accept=".eml,.msg,.docx,.pdf,.txt,.md,.rtf,.html,.htm" multiple onchange="handleDocSelect(event)">
-      <div id="docProgress" style="display:none;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div class="spinner"></div>
-          <span id="docStatus" style="font-size:13px;color:var(--accent2);">문서에서 텍스트 추출 중...</span>
-        </div>
-      </div>
-
-      <div class="bulk-area">
-        <textarea id="bulkInput" placeholder="예시:&#10;긴급 - 천현철 형사계약 검토&#10;퍼솔 회신 초안 작성&#10;케이비아이텍 경매 확인&#10;블로그 포스팅 작성&#10;BMW X5 브레이크 오일 교체&#10;&#10;또는 위에서 스크린샷을 업로드하면 자동으로 텍스트가 여기에 입력됩니다."></textarea>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
-        <button class="btn-primary btn-sm" style="background:#f59e0b;color:#1e293b;" onclick="extractTasksFromDocs()">📄 AI 할일 추출</button>
-        <button class="btn-warning btn-sm" onclick="document.getElementById('imgInput').click()">📸 스크린샷</button>
-        <button class="btn-ghost btn-sm" onclick="document.getElementById('excelInput').click()">📊 엑셀/CSV</button>
-        <button class="btn-ghost btn-sm" onclick="clearInput()">초기화</button>
-      </div>
-      <div class="parse-preview" id="parsePreview"></div>
-      <div id="parseActions" style="display:none;margin-top:12px;">
-        <button class="btn-success" onclick="addParsedTasks()">전체 추가</button>
-      </div>
-    </div>
-
-    <div class="card">
       <h3>빠른 입력</h3>
       <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">자유롭게 입력하세요. AI가 분석해서 할 일을 추출합니다.</p>
       <textarea id="quickInput" placeholder="예시:&#10;내일 오후 2시에 김변호사님이랑 경매 건 미팅 있고, 그 전에 퍼솔 계약서 검토 마무리해야 함. 블로그 포스팅도 이번주 안에 하나 올려야 하고, BMW 정기점검 예약도 해야 됨. 아 그리고 와이프 생일선물 사야 하는데 백화점 가야 하나..." style="min-height:100px;font-size:14px;line-height:1.6;"></textarea>
@@ -257,6 +200,59 @@ textarea { resize: vertical; min-height: 120px; }
       <div class="parse-preview" id="quickPreview"></div>
       <div id="quickActions" style="display:none;margin-top:12px;">
         <button class="btn-success" onclick="addQuickParsedTasks()">전체 추가</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>파일에서 입력</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">이메일, 워드, PDF, 스크린샷, 엑셀 등에서 텍스트를 추출합니다.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <!-- Screenshot Upload -->
+        <div id="screenshotArea" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('imgInput').click()" ondrop="handleImageDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'">
+          <div style="font-size:28px;margin-bottom:6px;">📸</div>
+          <div style="font-size:13px;color:var(--text2);">스크린샷 업로드</div>
+        </div>
+        <!-- Document Upload -->
+        <div id="docArea" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('docInput').click()" ondrop="handleDocDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent2)'" ondragleave="this.style.borderColor='var(--border)'">
+          <div style="font-size:28px;margin-bottom:6px;">📄</div>
+          <div style="font-size:13px;color:var(--text2);">문서 업로드</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">.eml .docx .pdf .txt .md</div>
+        </div>
+      </div>
+
+      <input type="file" id="imgInput" style="display:none" accept="image/*" multiple onchange="handleImageSelect(event)">
+      <input type="file" id="docInput" style="display:none" accept=".eml,.msg,.docx,.pdf,.txt,.md,.rtf,.html,.htm" multiple onchange="handleDocSelect(event)">
+
+      <div id="ocrProgress" style="display:none;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="spinner"></div>
+          <span id="ocrStatus" style="font-size:13px;color:var(--accent);">이미지에서 텍스트 추출 중...</span>
+        </div>
+        <div style="background:var(--surface2);border-radius:4px;height:6px;margin-top:8px;overflow:hidden;">
+          <div id="ocrBar" style="background:var(--accent);height:100%;width:0%;transition:width 0.3s;"></div>
+        </div>
+      </div>
+      <div id="ocrImageList" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+      <div id="docProgress" style="display:none;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="spinner"></div>
+          <span id="docStatus" style="font-size:13px;color:var(--accent2);">문서에서 텍스트 추출 중...</span>
+        </div>
+      </div>
+
+      <div class="bulk-area">
+        <textarea id="bulkInput" placeholder="파일에서 추출된 텍스트가 여기에 표시됩니다. 직접 붙여넣기도 가능합니다."></textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-primary" style="background:var(--accent2);" onclick="parseWithClaude()">🤖 AI 분석</button>
+        <button class="btn-primary btn-sm" style="background:#f59e0b;color:#1e293b;" onclick="extractTasksFromDocs()">📄 AI 할일 추출</button>
+        <button class="btn-ghost btn-sm" onclick="document.getElementById('excelInput').click()">📊 엑셀/CSV</button>
+        <button class="btn-ghost btn-sm" onclick="clearInput()">초기화</button>
+      </div>
+      <div class="parse-preview" id="parsePreview"></div>
+      <div id="parseActions" style="display:none;margin-top:12px;">
+        <button class="btn-success" onclick="addParsedTasks()">전체 추가</button>
       </div>
     </div>
   </div>
@@ -938,98 +934,149 @@ function renderTasks() {
   `).join('');
 }
 
-// ===== ACTION PLAN =====
-function generatePlan() {
+// ===== ACTION PLAN (AI) =====
+async function generatePlan() {
   const pending = tasks.filter(t => !t.done);
   if (pending.length === 0) {
     document.getElementById('planContent').innerHTML = '<p style="text-align:center;color:var(--text2);padding:40px;">미완료 업무가 없습니다.</p>';
     return;
   }
+  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
 
-  // Phase 1: Quick Wins (short tasks, high score)
-  const quickWins = pending.filter(t => t.timeMin <= settings.quickWinMax)
-    .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+  const planEl = document.getElementById('planContent');
+  planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 최적 액션 플랜을 생성 중...</span></div>';
 
-  // Phase 2: Deep Work (Q1 + Q2, sorted by score)
-  const deepWork = pending.filter(t => t.timeMin > settings.quickWinMax && (t.quadrant === 'q1' || t.quadrant === 'q2'))
-    .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+  const taskList = pending.map(t => `- "${t.title}" [카테고리: ${t.category}, 사분면: ${quadLabel(t.quadrant)}, 현재 예상: ${t.timeMin}분]`).join('\n');
 
-  // Phase 3: Delegate/Batch (Q3 + Q4)
-  const delegate = pending.filter(t => t.timeMin > settings.quickWinMax && (t.quadrant === 'q3' || t.quadrant === 'q4'))
-    .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+  const prompt = `당신은 법률사무소 변호사의 시간 관리 전문 비서입니다.
+아래 미완료 업무 목록을 분석하여 오늘의 최적 액션 플랜을 만들어주세요.
 
-  // Build timeline
-  let currentTime = parseTime(settings.startTime);
-  const endTime = parseTime(settings.endTime);
-  const lunchStart = parseTime(settings.lunchStart);
-  const lunchEnd = parseTime(settings.lunchEnd);
+업무 시간: ${settings.startTime} ~ ${settings.endTime}
+점심 시간: ${settings.lunchStart} ~ ${settings.lunchEnd}
 
-  let html = '';
-  let totalPlanned = 0;
+미완료 업무:
+${taskList}
 
-  function addBlock(task, phase) {
-    if (currentTime >= endTime) return false;
-    // Lunch break
-    if (currentTime < lunchEnd && currentTime + task.timeMin > lunchStart && currentTime >= lunchStart - 5) {
-      html += `<div class="time-block break"><div class="time-label">${formatTime(lunchStart)}</div><div class="time-content"><div class="title">점심 시간</div></div></div>`;
-      currentTime = lunchEnd;
+중요 지침:
+1. **실제 소요시간을 현실적으로 재평가**하세요:
+   - 전화 한 통, 간단한 확인, 이메일 회신 = 3~5분
+   - 짧은 메일 작성, 간단한 검색/확인 = 5~10분
+   - 초안 작성, 서류 정리, 짧은 보고 = 15~30분
+   - 계약서 검토, 전략 수립, 분석 = 30~60분
+   - 미팅, 재판, 심문 = 실제 소요시간
+   - 쇼핑/주문 (온라인) = 5~10분, (오프라인) = 60분+
+2. 긴급+중요(Q1)부터, 짧은 업무 먼저 처리 (Quick Win)
+3. 집중력이 높은 오전에 Deep Work 배치
+4. 점심 전후로 가벼운 업무 배치
+5. 이동/외부 업무는 묶어서 배치
+
+JSON으로 반환하세요:
+{
+  "tasks": [
+    { "id": 업무id(숫자), "title": "업무명", "realTime": 실제소요시간(분), "reason": "시간 판단 근거" }
+  ],
+  "plan": [
+    { "start": "09:00", "end": "09:05", "title": "업무명", "phase": "quick_win|deep_work|batch|break|lunch", "tip": "실행 팁" }
+  ],
+  "summary": "오늘 플랜 요약 (1-2문장)",
+  "overflow": ["시간 내 처리 불가한 업무명들"]
+}
+
+JSON만 반환하세요.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: claudeModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error?.message || `API 오류 (${resp.status})`);
     }
-    if (currentTime >= endTime) return false;
 
-    const end = Math.min(currentTime + task.timeMin, endTime);
-    html += `<div class="time-block phase${phase}">
-      <div class="time-label">${formatTime(currentTime)} - ${formatTime(end)}</div>
-      <div class="time-content">
-        <div class="title">${escHtml(task.title)}</div>
-        <div class="desc">${task.category} | ${task.timeMin}분 | Score: ${quickWinScore(task)}</div>
-      </div>
-    </div>`;
-    currentTime = end;
-    totalPlanned++;
-    return true;
-  }
+    const result = await resp.json();
+    const text = result.content[0].text;
+    let jsonStr = text;
+    const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (match) jsonStr = match[1];
+    const data = JSON.parse(jsonStr.trim());
 
-  // Phase 1
-  if (quickWins.length > 0) {
-    html += `<div class="phase-header phase1-header">PHASE 1: Quick Wins (${quickWins.length}건, 모멘텀 확보)</div>`;
-    for (const t of quickWins) { if (!addBlock(t, 1)) break; }
-
-    // 5min break
-    if (currentTime < endTime) {
-      html += `<div class="time-block break"><div class="time-label">${formatTime(currentTime)}</div><div class="time-content"><div class="title">짧은 휴식 (5분)</div></div></div>`;
-      currentTime += 5;
+    // AI가 재평가한 소요시간을 업무에 반영
+    if (data.tasks) {
+      for (const aiTask of data.tasks) {
+        const t = tasks.find(t => String(t.id) === String(aiTask.id));
+        if (t && aiTask.realTime) {
+          t.timeMin = aiTask.realTime;
+        }
+      }
+      saveTasks();
     }
-  }
 
-  // Phase 2
-  if (deepWork.length > 0 && currentTime < endTime) {
-    html += `<div class="phase-header phase2-header">PHASE 2: Deep Work (${deepWork.length}건, 핵심 업무)</div>`;
-    for (const t of deepWork) {
-      if (!addBlock(t, 2)) break;
-      // Break between deep work blocks
-      if (currentTime < endTime && t.timeMin >= 60) {
-        html += `<div class="time-block break"><div class="time-label">${formatTime(currentTime)}</div><div class="time-content"><div class="title">휴식 (10분)</div></div></div>`;
-        currentTime += 10;
+    // 플랜 렌더링
+    let html = '';
+
+    if (data.summary) {
+      html += `<div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;font-size:14px;color:var(--text);">${escHtml(data.summary)}</div>`;
+    }
+
+    // 시간 재평가 표시
+    if (data.tasks && data.tasks.length > 0) {
+      html += `<div style="margin-bottom:16px;">
+        <div class="phase-header" style="color:var(--accent2);">소요시간 재평가</div>`;
+      for (const t of data.tasks) {
+        html += `<div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:13px;border-bottom:1px solid var(--border);">
+          <span>${escHtml(t.title)}</span>
+          <span style="color:var(--success);font-weight:600;">${t.realTime}분 <span style="color:var(--text2);font-weight:400;">— ${escHtml(t.reason || '')}</span></span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    // 타임라인
+    if (data.plan && data.plan.length > 0) {
+      let currentPhase = '';
+      for (const block of data.plan) {
+        const phaseLabels = { quick_win: 'QUICK WIN', deep_work: 'DEEP WORK', batch: '배치 처리', break: '', lunch: '' };
+        const phaseClass = block.phase === 'quick_win' ? 'phase1' : block.phase === 'deep_work' ? 'phase2' : block.phase === 'batch' ? 'phase3' : 'break';
+
+        if (block.phase !== currentPhase && block.phase !== 'break' && block.phase !== 'lunch') {
+          const phaseHeaderClass = block.phase === 'quick_win' ? 'phase1-header' : block.phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
+          html += `<div class="phase-header ${phaseHeaderClass}">${phaseLabels[block.phase] || block.phase}</div>`;
+          currentPhase = block.phase;
+        }
+
+        html += `<div class="time-block ${phaseClass}">
+          <div class="time-label">${block.start} - ${block.end}</div>
+          <div class="time-content">
+            <div class="title">${escHtml(block.title)}</div>
+            ${block.tip ? `<div class="desc">${escHtml(block.tip)}</div>` : ''}
+          </div>
+        </div>`;
       }
     }
+
+    // 이월 업무
+    if (data.overflow && data.overflow.length > 0) {
+      html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${data.overflow.length}건 내일 이월 권장: ${data.overflow.map(o => escHtml(o)).join(', ')}</div>`;
+    }
+
+    planEl.innerHTML = html;
+    renderAll();
+
+  } catch (e) {
+    planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}</div>`;
   }
-
-  // Phase 3
-  if (delegate.length > 0 && currentTime < endTime) {
-    html += `<div class="phase-header phase3-header">PHASE 3: 위임/배치 처리 (${delegate.length}건)</div>`;
-    for (const t of delegate) { if (!addBlock(t, 3)) break; }
-  }
-
-  const overflow = pending.length - totalPlanned;
-  if (overflow > 0) {
-    html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${overflow}건은 오늘 시간 내 배치 불가 — 내일로 이월 권장</div>`;
-  }
-
-  html += `<div style="text-align:center;padding:16px;color:var(--text2);font-size:13px;">
-    오늘 배치: ${totalPlanned}건 | 총 예상: ${Math.floor(pending.reduce((s,t)=>s+t.timeMin,0)/60)}시간 ${pending.reduce((s,t)=>s+t.timeMin,0)%60}분
-  </div>`;
-
-  document.getElementById('planContent').innerHTML = html;
 }
 
 // ===== ACTIONS =====
