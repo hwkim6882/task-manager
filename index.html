@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Executive Task Manager - 형우님 업무 매니저</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface2: #334155;
+  --accent: #3b82f6;
+  --accent2: #8b5cf6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --text: #f1f5f9;
+  --text2: #94a3b8;
+  --border: #475569;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+header h1 { font-size: 24px; font-weight: 700; }
+header h1 span { color: var(--accent); }
+.header-actions { display: flex; gap: 10px; }
+.tab-bar { display: flex; gap: 4px; background: var(--surface); border-radius: 12px; padding: 4px; margin-bottom: 24px; }
+.tab { padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text2); transition: all 0.2s; border: none; background: none; }
+.tab.active { background: var(--accent); color: white; }
+.tab:hover:not(.active) { color: var(--text); background: var(--surface2); }
+.panel { display: none; }
+.panel.active { display: block; }
+button { cursor: pointer; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; padding: 10px 18px; transition: all 0.2s; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: #2563eb; }
+.btn-success { background: var(--success); color: white; }
+.btn-success:hover { background: #059669; }
+.btn-warning { background: var(--warning); color: #1e293b; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+input, textarea, select { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 14px; font-size: 14px; width: 100%; font-family: inherit; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; min-height: 120px; }
+.card { background: var(--surface); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.card h3 { font-size: 16px; margin-bottom: 12px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--surface); border-radius: 12px; padding: 20px; }
+.stat-card .label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.stat-card .value { font-size: 32px; font-weight: 700; margin: 4px 0; }
+.stat-card .sub { font-size: 13px; color: var(--text2); }
+
+/* Eisenhower Matrix */
+.matrix { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 12px; margin-top: 16px; }
+.matrix-header { display: flex; justify-content: center; gap: 200px; font-size: 13px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; grid-column: 1 / -1; }
+.quadrant { border-radius: 12px; padding: 16px; min-height: 200px; }
+.q1 { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); }
+.q2 { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); }
+.q3 { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); }
+.q4 { background: rgba(100,116,139,0.15); border: 1px solid rgba(100,116,139,0.3); }
+.quadrant h4 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.q1 h4 { color: var(--danger); }
+.q2 h4 { color: var(--accent); }
+.q3 h4 { color: var(--warning); }
+.q4 h4 { color: var(--text2); }
+.task-chip { background: rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; cursor: grab; }
+.task-chip:hover { background: rgba(255,255,255,0.12); }
+.task-chip .time { font-size: 11px; color: var(--text2); white-space: nowrap; margin-left: 8px; }
+
+/* Task list */
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+.task-item { background: var(--surface); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); transition: all 0.2s; }
+.task-item:hover { border-color: var(--accent); }
+.task-item.done { opacity: 0.5; }
+.task-item.done .task-title { text-decoration: line-through; }
+.task-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.task-check.checked { background: var(--success); border-color: var(--success); }
+.task-check.checked::after { content: '\\2713'; color: white; font-size: 12px; }
+.task-body { flex: 1; min-width: 0; }
+.task-title { font-size: 14px; font-weight: 500; }
+.task-meta { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+.tag-q1 { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.tag-q2 { background: rgba(59,130,246,0.2); color: #93c5fd; }
+.tag-q3 { background: rgba(245,158,11,0.2); color: #fcd34d; }
+.tag-q4 { background: rgba(100,116,139,0.2); color: #94a3b8; }
+.tag-cat { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+.task-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.task-score { font-size: 20px; font-weight: 700; color: var(--accent); width: 50px; text-align: center; flex-shrink: 0; }
+
+/* Timeline */
+.timeline { position: relative; }
+.time-block { background: var(--surface); border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; border-left: 4px solid var(--accent); display: flex; gap: 16px; align-items: flex-start; }
+.time-block.phase1 { border-left-color: var(--success); }
+.time-block.phase2 { border-left-color: var(--accent); }
+.time-block.phase3 { border-left-color: var(--warning); }
+.time-block.break { border-left-color: var(--text2); opacity: 0.6; }
+.time-label { font-size: 13px; color: var(--text2); width: 100px; flex-shrink: 0; font-weight: 600; }
+.time-content { flex: 1; }
+.time-content .title { font-size: 14px; font-weight: 500; }
+.time-content .desc { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.phase-header { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 12px 0 8px; }
+.phase1-header { color: var(--success); }
+.phase2-header { color: var(--accent); }
+.phase3-header { color: var(--warning); }
+
+/* Bulk input */
+.bulk-area { position: relative; }
+.bulk-area textarea { min-height: 200px; font-size: 13px; line-height: 1.6; }
+.parse-preview { margin-top: 16px; }
+.parse-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface2); border-radius: 8px; margin-bottom: 6px; }
+.parse-item select { width: auto; padding: 4px 8px; font-size: 12px; }
+.parse-item input { font-size: 13px; }
+
+/* Modal */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal { background: var(--surface); border-radius: 16px; padding: 24px; width: 90%; max-width: 500px; }
+.modal h3 { margin-bottom: 16px; }
+.modal .form-group { margin-bottom: 14px; }
+.modal .form-group label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+.modal .btn-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+/* Drag */
+.dragging { opacity: 0.5; }
+.drag-over { background: rgba(59,130,246,0.1) !important; }
+
+/* Settings */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.settings-grid .form-group { margin-bottom: 0; }
+.settings-grid label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+
+/* Spinner */
+.spinner { width:20px; height:20px; border:3px solid var(--surface2); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Screenshot thumbnails */
+.ocr-thumb { position:relative; display:inline-block; }
+.ocr-thumb img { width:60px; height:60px; object-fit:cover; border-radius:6px; border:2px solid var(--border); }
+.ocr-thumb .remove { position:absolute; top:-6px; right:-6px; width:18px; height:18px; background:var(--danger); color:white; border-radius:50%; font-size:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:none; }
+.ocr-thumb.processing img { border-color:var(--accent); animation:pulse 1s infinite; }
+.ocr-thumb.done img { border-color:var(--success); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .matrix { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .tab { padding: 8px 12px; font-size: 12px; }
+}
+</style>
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1><span>Executive</span> Task Manager</h1>
+    <div class="header-actions">
+      <button class="btn-ghost btn-sm" onclick="exportData()">JSON 내보내기</button>
+      <button class="btn-ghost btn-sm" onclick="importData()">JSON 불러오기</button>
+      <button class="btn-success btn-sm" onclick="exportExcel()">Excel 내보내기</button>
+    </div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="tab-bar">
+    <button class="tab active" data-tab="input">업무 입력</button>
+    <button class="tab" data-tab="matrix">매트릭스</button>
+    <button class="tab" data-tab="tasks">전체 업무</button>
+    <button class="tab" data-tab="plan">액션 플랜</button>
+    <button class="tab" data-tab="settings">설정</button>
+  </div>
+
+  <!-- 1. 업무 입력 -->
+  <div class="panel active" id="panel-input">
+    <div class="card">
+      <h3>업무 일괄 입력</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">할 일 목록, 이메일 내용, 메모 등을 줄 단위로 붙여넣거나 <b>스크린샷을 업로드</b>하세요.</p>
+
+      <!-- Screenshot Upload Area -->
+      <div id="screenshotArea" style="border:2px dashed var(--border);border-radius:12px;padding:24px;text-align:center;margin-bottom:12px;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('imgInput').click()" ondrop="handleImageDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'">
+        <div id="screenshotPlaceholder">
+          <div style="font-size:32px;margin-bottom:8px;">📸</div>
+          <div style="font-size:14px;color:var(--text2);">스크린샷을 드래그하거나 클릭해서 업로드</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">Google Tasks, 이메일, 메모 앱 등의 캡처 이미지</div>
+        </div>
+        <div id="screenshotPreview" style="display:none;">
+          <img id="previewImg" style="max-width:100%;max-height:300px;border-radius:8px;">
+        </div>
+      </div>
+      <input type="file" id="imgInput" style="display:none" accept="image/*" multiple onchange="handleImageSelect(event)">
+      <div id="ocrProgress" style="display:none;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="spinner"></div>
+          <span id="ocrStatus" style="font-size:13px;color:var(--accent);">이미지에서 텍스트 추출 중...</span>
+        </div>
+        <div style="background:var(--surface2);border-radius:4px;height:6px;margin-top:8px;overflow:hidden;">
+          <div id="ocrBar" style="background:var(--accent);height:100%;width:0%;transition:width 0.3s;"></div>
+        </div>
+      </div>
+      <div id="ocrImageList" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+
+      <div class="bulk-area">
+        <textarea id="bulkInput" placeholder="예시:&#10;긴급 - 천현철 형사계약 검토&#10;퍼솔 회신 초안 작성&#10;케이비아이텍 경매 확인&#10;블로그 포스팅 작성&#10;BMW X5 브레이크 오일 교체&#10;&#10;또는 위에서 스크린샷을 업로드하면 자동으로 텍스트가 여기에 입력됩니다."></textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-primary" onclick="parseBulk()">분석 및 분류</button>
+        <button class="btn-warning btn-sm" onclick="document.getElementById('imgInput').click()">📸 스크린샷 추가</button>
+        <button class="btn-ghost" onclick="clearInput()">초기화</button>
+      </div>
+      <div class="parse-preview" id="parsePreview"></div>
+      <div id="parseActions" style="display:none;margin-top:12px;">
+        <button class="btn-success" onclick="addParsedTasks()">전체 추가</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>개별 업무 추가</h3>
+      <div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:10px;align-items:end;">
+        <div>
+          <label style="font-size:12px;color:var(--text2);">업무명</label>
+          <input id="singleTitle" placeholder="업무 내용 입력">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);">사분면</label>
+          <select id="singleQuad">
+            <option value="q1">Q1 긴급+중요</option>
+            <option value="q2">Q2 중요</option>
+            <option value="q3">Q3 긴급</option>
+            <option value="q4">Q4 기타</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);">카테고리</label>
+          <select id="singleCat">
+            <option value="소송">소송</option>
+            <option value="자문">자문</option>
+            <option value="마케팅">마케팅</option>
+            <option value="개인">개인</option>
+            <option value="행정">행정</option>
+            <option value="스타트업">스타트업</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);">소요(분)</label>
+          <input id="singleTime" type="number" value="30" style="width:80px;">
+        </div>
+        <button class="btn-primary" onclick="addSingleTask()">추가</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 매트릭스 -->
+  <div class="panel" id="panel-matrix">
+    <div class="card">
+      <h3>Eisenhower Matrix</h3>
+      <div class="matrix">
+        <div class="matrix-header"><span>긴급</span><span>긴급하지 않음</span></div>
+        <div class="quadrant q1" id="quad-q1" ondrop="dropTask(event,'q1')" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+          <h4>Q1: 즉시 처리</h4>
+          <div class="quad-tasks"></div>
+        </div>
+        <div class="quadrant q2" id="quad-q2" ondrop="dropTask(event,'q2')" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+          <h4>Q2: 계획 수립</h4>
+          <div class="quad-tasks"></div>
+        </div>
+        <div class="quadrant q3" id="quad-q3" ondrop="dropTask(event,'q3')" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+          <h4>Q3: 위임 가능</h4>
+          <div class="quad-tasks"></div>
+        </div>
+        <div class="quadrant q4" id="quad-q4" ondrop="dropTask(event,'q4')" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+          <h4>Q4: 제거/보류</h4>
+          <div class="quad-tasks"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 전체 업무 -->
+  <div class="panel" id="panel-tasks">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <select id="filterQuad" onchange="renderTasks()" style="width:auto;">
+        <option value="all">전체 사분면</option>
+        <option value="q1">Q1 긴급+중요</option>
+        <option value="q2">Q2 중요</option>
+        <option value="q3">Q3 긴급</option>
+        <option value="q4">Q4 기타</option>
+      </select>
+      <select id="filterCat" onchange="renderTasks()" style="width:auto;">
+        <option value="all">전체 카테고리</option>
+        <option value="소송">소송</option>
+        <option value="자문">자문</option>
+        <option value="마케팅">마케팅</option>
+        <option value="개인">개인</option>
+        <option value="행정">행정</option>
+        <option value="스타트업">스타트업</option>
+      </select>
+      <select id="filterDone" onchange="renderTasks()" style="width:auto;">
+        <option value="pending">미완료</option>
+        <option value="all">전체</option>
+        <option value="done">완료</option>
+      </select>
+      <select id="sortBy" onchange="renderTasks()" style="width:auto;">
+        <option value="score">Quick Win Score순</option>
+        <option value="time">소요시간순</option>
+        <option value="quad">사분면순</option>
+        <option value="created">입력순</option>
+      </select>
+    </div>
+    <div class="task-list" id="taskList"></div>
+  </div>
+
+  <!-- 4. 액션 플랜 -->
+  <div class="panel" id="panel-plan">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3>오늘의 액션 플랜</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-primary btn-sm" onclick="generatePlan()">플랜 생성</button>
+          <button class="btn-success btn-sm" onclick="exportExcel()">Excel 내보내기</button>
+        </div>
+      </div>
+      <div id="planContent">
+        <p style="color:var(--text2);text-align:center;padding:40px;">"플랜 생성" 버튼을 눌러 오늘의 시간표를 만드세요.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 설정 -->
+  <div class="panel" id="panel-settings">
+    <div class="card">
+      <h3>업무 시간 설정</h3>
+      <div class="settings-grid" style="margin-top:12px;">
+        <div class="form-group">
+          <label>업무 시작 시간</label>
+          <input type="time" id="setStart" value="09:00">
+        </div>
+        <div class="form-group">
+          <label>업무 종료 시간</label>
+          <input type="time" id="setEnd" value="18:00">
+        </div>
+        <div class="form-group">
+          <label>점심 시작</label>
+          <input type="time" id="setLunchStart" value="12:00">
+        </div>
+        <div class="form-group">
+          <label>점심 끝</label>
+          <input type="time" id="setLunchEnd" value="13:00">
+        </div>
+        <div class="form-group">
+          <label>Quick Win 최대 시간 (분)</label>
+          <input type="number" id="setQuickWin" value="15">
+        </div>
+        <div class="form-group">
+          <label>Deep Work 블록 (분)</label>
+          <input type="number" id="setDeepWork" value="90">
+        </div>
+      </div>
+      <button class="btn-primary" style="margin-top:16px;" onclick="saveSettings()">저장</button>
+    </div>
+
+    <div class="card">
+      <h3>키워드 분류 규칙</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">일괄 입력 시 자동 분류에 사용되는 키워드입니다.</p>
+      <div id="keywordRules"></div>
+      <button class="btn-ghost btn-sm" style="margin-top:10px;" onclick="resetKeywords()">기본값 복원</button>
+    </div>
+
+    <div class="card">
+      <h3>데이터 관리</h3>
+      <div style="display:flex;gap:10px;margin-top:10px;">
+        <button class="btn-danger btn-sm" onclick="if(confirm('모든 업무를 삭제합니다. 계속할까요?')){tasks=[];saveTasks();renderAll();}">전체 초기화</button>
+        <button class="btn-ghost btn-sm" onclick="exportData()">JSON 백업</button>
+        <button class="btn-ghost btn-sm" onclick="importData()">JSON 복원</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal" style="display:none;">
+  <div class="modal">
+    <h3>업무 수정</h3>
+    <div class="form-group">
+      <label>업무명</label>
+      <input id="editTitle">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="form-group">
+        <label>사분면</label>
+        <select id="editQuad">
+          <option value="q1">Q1 긴급+중요</option>
+          <option value="q2">Q2 중요</option>
+          <option value="q3">Q3 긴급</option>
+          <option value="q4">Q4 기타</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>카테고리</label>
+        <select id="editCat">
+          <option value="소송">소송</option>
+          <option value="자문">자문</option>
+          <option value="마케팅">마케팅</option>
+          <option value="개인">개인</option>
+          <option value="행정">행정</option>
+          <option value="스타트업">스타트업</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="form-group">
+        <label>소요시간(분)</label>
+        <input type="number" id="editTime">
+      </div>
+      <div class="form-group">
+        <label>임팩트(1-5)</label>
+        <input type="number" id="editImpact" min="1" max="5">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>메모</label>
+      <textarea id="editNote" style="min-height:60px;"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="closeEditModal()">취소</button>
+      <button class="btn-primary" onclick="saveEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" style="display:none" accept=".json" onchange="handleImport(event)">
+
+<script>
+// ===== DATA =====
+let tasks = JSON.parse(localStorage.getItem('etm_tasks') || '[]');
+let settings = JSON.parse(localStorage.getItem('etm_settings') || 'null') || {
+  startTime: '09:00',
+  endTime: '18:00',
+  lunchStart: '12:00',
+  lunchEnd: '13:00',
+  quickWinMax: 15,
+  deepWorkBlock: 90,
+};
+let editingId = null;
+let parsedItems = [];
+
+const DEFAULT_KEYWORDS = {
+  quadrant: {
+    q1: ['긴급','마감','오늘','즉시','급한','ASAP','당장','지금','데드라인','deadline','심문','기일','변론','재판'],
+    q2: ['계획','전략','검토','분석','준비','연구','기획','설계','리서치','중요'],
+    q3: ['회신','답변','전달','보고','메일','연락','전화','문의','요청'],
+    q4: ['참고','나중에','언젠가','보류','정리','백업']
+  },
+  category: {
+    '소송': ['소송','재판','법원','심문','변론','기일','판결','항소','상고','고소','고발','형사','민사','경매','압류','강제집행','채권','채무'],
+    '자문': ['자문','검토','의견서','계약','계약서','법률','협상','MOU','NDA','약관'],
+    '마케팅': ['마케팅','블로그','포스팅','SNS','광고','영업','홍보','콘텐츠','세미나','네트워크'],
+    '개인': ['개인','병원','차량','BMW','미용','헬스','운동','가족','쇼핑'],
+    '행정': ['행정','타임시트','보고','회의','미팅','파트너','경비','청구','보험'],
+    '스타트업': ['스타트업','창업','투자','앱','서비스','개발','플랫폼','AI','인공지능']
+  },
+  timeEstimate: {
+    5: ['확인','체크','전화','문의'],
+    15: ['회신','답변','메일','전달','보고','검색'],
+    30: ['초안','작성','준비','정리','분석'],
+    60: ['검토','기획','전략','연구'],
+    120: ['미팅','회의','재판','심문']
+  }
+};
+
+let keywords = JSON.parse(localStorage.getItem('etm_keywords') || 'null') || DEFAULT_KEYWORDS;
+
+// ===== TASK MODEL =====
+function createTask(title, quad='q3', category='행정', timeMin=30, impact=3, note='') {
+  return {
+    id: Date.now() + Math.random(),
+    title,
+    quadrant: quad,
+    category,
+    timeMin,
+    impact,
+    note,
+    done: false,
+    createdAt: new Date().toISOString(),
+    doneAt: null,
+  };
+}
+
+function quickWinScore(task) {
+  if (task.done) return 0;
+  const quadBonus = {q1:2, q2:1.5, q3:1, q4:0.5}[task.quadrant] || 1;
+  return ((task.impact * quadBonus) / Math.sqrt(Math.max(task.timeMin, 1))).toFixed(2);
+}
+
+// ===== BULK PARSE =====
+function classifyText(text) {
+  const lower = text.toLowerCase();
+  let quad = 'q3', cat = '행정', time = 30, impact = 3;
+
+  // Quadrant
+  for (const [q, kws] of Object.entries(keywords.quadrant)) {
+    if (kws.some(k => lower.includes(k.toLowerCase()))) { quad = q; break; }
+  }
+
+  // Category
+  for (const [c, kws] of Object.entries(keywords.category)) {
+    if (kws.some(k => lower.includes(k.toLowerCase()))) { cat = c; break; }
+  }
+
+  // Time estimate
+  for (const [t, kws] of Object.entries(keywords.timeEstimate)) {
+    if (kws.some(k => lower.includes(k.toLowerCase()))) { time = parseInt(t); break; }
+  }
+
+  // Impact from quadrant
+  impact = {q1:5, q2:4, q3:2, q4:1}[quad] || 3;
+
+  return { quad, cat, time, impact };
+}
+
+function parseBulk() {
+  const raw = document.getElementById('bulkInput').value.trim();
+  if (!raw) return;
+
+  const lines = raw.split('\n').map(l => l.replace(/^[\-\*\d\.\)\]]+\s*/, '').trim()).filter(l => l.length > 1);
+  parsedItems = lines.map(line => {
+    const cls = classifyText(line);
+    return { title: line, ...cls };
+  });
+
+  const preview = document.getElementById('parsePreview');
+  preview.innerHTML = parsedItems.map((item, i) => `
+    <div class="parse-item">
+      <input value="${escHtml(item.title)}" onchange="parsedItems[${i}].title=this.value" style="flex:1;">
+      <select onchange="parsedItems[${i}].quad=this.value">
+        ${['q1','q2','q3','q4'].map(q => `<option value="${q}" ${item.quad===q?'selected':''}>${quadLabel(q)}</option>`).join('')}
+      </select>
+      <select onchange="parsedItems[${i}].cat=this.value">
+        ${['소송','자문','마케팅','개인','행정','스타트업'].map(c => `<option ${item.cat===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <input type="number" value="${item.time}" onchange="parsedItems[${i}].time=+this.value" style="width:60px;" title="분">
+      <button class="btn-ghost btn-sm" onclick="parsedItems.splice(${i},1);parseBulkRefresh()">X</button>
+    </div>
+  `).join('');
+
+  document.getElementById('parseActions').style.display = 'block';
+}
+
+function parseBulkRefresh() {
+  const preview = document.getElementById('parsePreview');
+  preview.innerHTML = parsedItems.map((item, i) => `
+    <div class="parse-item">
+      <input value="${escHtml(item.title)}" onchange="parsedItems[${i}].title=this.value" style="flex:1;">
+      <select onchange="parsedItems[${i}].quad=this.value">
+        ${['q1','q2','q3','q4'].map(q => `<option value="${q}" ${item.quad===q?'selected':''}>${quadLabel(q)}</option>`).join('')}
+      </select>
+      <select onchange="parsedItems[${i}].cat=this.value">
+        ${['소송','자문','마케팅','개인','행정','스타트업'].map(c => `<option ${item.cat===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <input type="number" value="${item.time}" onchange="parsedItems[${i}].time=+this.value" style="width:60px;">
+      <button class="btn-ghost btn-sm" onclick="parsedItems.splice(${i},1);parseBulkRefresh()">X</button>
+    </div>
+  `).join('');
+  if (parsedItems.length === 0) document.getElementById('parseActions').style.display = 'none';
+}
+
+function addParsedTasks() {
+  for (const item of parsedItems) {
+    tasks.push(createTask(item.title, item.quad, item.cat, item.time, item.impact));
+  }
+  saveTasks();
+  parsedItems = [];
+  document.getElementById('parsePreview').innerHTML = '';
+  document.getElementById('parseActions').style.display = 'none';
+  document.getElementById('bulkInput').value = '';
+  renderAll();
+  switchTab('tasks');
+}
+
+function addSingleTask() {
+  const title = document.getElementById('singleTitle').value.trim();
+  if (!title) return;
+  const quad = document.getElementById('singleQuad').value;
+  const cat = document.getElementById('singleCat').value;
+  const time = parseInt(document.getElementById('singleTime').value) || 30;
+  const impact = {q1:5,q2:4,q3:2,q4:1}[quad];
+  tasks.push(createTask(title, quad, cat, time, impact));
+  saveTasks();
+  document.getElementById('singleTitle').value = '';
+  renderAll();
+}
+
+// ===== RENDERING =====
+function renderAll() {
+  renderStats();
+  renderMatrix();
+  renderTasks();
+}
+
+function renderStats() {
+  const pending = tasks.filter(t => !t.done);
+  const done = tasks.filter(t => t.done);
+  const totalMin = pending.reduce((s,t) => s+t.timeMin, 0);
+  const q1Count = pending.filter(t => t.quadrant==='q1').length;
+  const quickWins = pending.filter(t => t.timeMin <= settings.quickWinMax).length;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card">
+      <div class="label">미완료</div>
+      <div class="value">${pending.length}</div>
+      <div class="sub">총 ${done.length}건 완료</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">예상 총 소요</div>
+      <div class="value">${Math.floor(totalMin/60)}h ${totalMin%60}m</div>
+      <div class="sub">${pending.length}건 기준</div>
+    </div>
+    <div class="stat-card">
+      <div class="label" style="color:var(--danger);">Q1 긴급+중요</div>
+      <div class="value" style="color:var(--danger);">${q1Count}</div>
+      <div class="sub">즉시 처리 필요</div>
+    </div>
+    <div class="stat-card">
+      <div class="label" style="color:var(--success);">Quick Wins</div>
+      <div class="value" style="color:var(--success);">${quickWins}</div>
+      <div class="sub">${settings.quickWinMax}분 이하 업무</div>
+    </div>
+  `;
+}
+
+function renderMatrix() {
+  for (const q of ['q1','q2','q3','q4']) {
+    const el = document.querySelector(`#quad-${q} .quad-tasks`);
+    const items = tasks.filter(t => t.quadrant === q && !t.done);
+    el.innerHTML = items.map(t => `
+      <div class="task-chip" draggable="true" ondragstart="dragStart(event,'${t.id}')">
+        <span>${escHtml(t.title)}</span>
+        <span class="time">${t.timeMin}분</span>
+      </div>
+    `).join('');
+  }
+}
+
+function renderTasks() {
+  const fQuad = document.getElementById('filterQuad').value;
+  const fCat = document.getElementById('filterCat').value;
+  const fDone = document.getElementById('filterDone').value;
+  const sort = document.getElementById('sortBy').value;
+
+  let filtered = tasks.filter(t => {
+    if (fQuad !== 'all' && t.quadrant !== fQuad) return false;
+    if (fCat !== 'all' && t.category !== fCat) return false;
+    if (fDone === 'pending' && t.done) return false;
+    if (fDone === 'done' && !t.done) return false;
+    return true;
+  });
+
+  filtered.sort((a,b) => {
+    if (sort === 'score') return quickWinScore(b) - quickWinScore(a);
+    if (sort === 'time') return a.timeMin - b.timeMin;
+    if (sort === 'quad') return a.quadrant.localeCompare(b.quadrant);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+
+  document.getElementById('taskList').innerHTML = filtered.length === 0
+    ? '<p style="text-align:center;color:var(--text2);padding:40px;">업무가 없습니다.</p>'
+    : filtered.map(t => `
+    <div class="task-item ${t.done?'done':''}">
+      <div class="task-score">${t.done?'--':quickWinScore(t)}</div>
+      <div class="task-check ${t.done?'checked':''}" onclick="toggleDone('${t.id}')"></div>
+      <div class="task-body">
+        <div class="task-title">${escHtml(t.title)}</div>
+        <div class="task-meta">
+          <span class="tag tag-${t.quadrant}">${quadLabel(t.quadrant)}</span>
+          <span class="tag tag-cat">${t.category}</span>
+          <span style="font-size:12px;color:var(--text2);">${t.timeMin}분 | 임팩트 ${t.impact}</span>
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="btn-ghost btn-sm" onclick="openEdit('${t.id}')">수정</button>
+        <button class="btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTask('${t.id}')">삭제</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===== ACTION PLAN =====
+function generatePlan() {
+  const pending = tasks.filter(t => !t.done);
+  if (pending.length === 0) {
+    document.getElementById('planContent').innerHTML = '<p style="text-align:center;color:var(--text2);padding:40px;">미완료 업무가 없습니다.</p>';
+    return;
+  }
+
+  // Phase 1: Quick Wins (short tasks, high score)
+  const quickWins = pending.filter(t => t.timeMin <= settings.quickWinMax)
+    .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+
+  // Phase 2: Deep Work (Q1 + Q2, sorted by score)
+  const deepWork = pending.filter(t => t.timeMin > settings.quickWinMax && (t.quadrant === 'q1' || t.quadrant === 'q2'))
+    .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+
+  // Phase 3: Delegate/Batch (Q3 + Q4)
+  const delegate = pending.filter(t => t.timeMin > settings.quickWinMax && (t.quadrant === 'q3' || t.quadrant === 'q4'))
+    .sort((a,b) => quickWinScore(b) - quickWinScore(a));
+
+  // Build timeline
+  let currentTime = parseTime(settings.startTime);
+  const endTime = parseTime(settings.endTime);
+  const lunchStart = parseTime(settings.lunchStart);
+  const lunchEnd = parseTime(settings.lunchEnd);
+
+  let html = '';
+  let totalPlanned = 0;
+
+  function addBlock(task, phase) {
+    if (currentTime >= endTime) return false;
+    // Lunch break
+    if (currentTime < lunchEnd && currentTime + task.timeMin > lunchStart && currentTime >= lunchStart - 5) {
+      html += `<div class="time-block break"><div class="time-label">${formatTime(lunchStart)}</div><div class="time-content"><div class="title">점심 시간</div></div></div>`;
+      currentTime = lunchEnd;
+    }
+    if (currentTime >= endTime) return false;
+
+    const end = Math.min(currentTime + task.timeMin, endTime);
+    html += `<div class="time-block phase${phase}">
+      <div class="time-label">${formatTime(currentTime)} - ${formatTime(end)}</div>
+      <div class="time-content">
+        <div class="title">${escHtml(task.title)}</div>
+        <div class="desc">${task.category} | ${task.timeMin}분 | Score: ${quickWinScore(task)}</div>
+      </div>
+    </div>`;
+    currentTime = end;
+    totalPlanned++;
+    return true;
+  }
+
+  // Phase 1
+  if (quickWins.length > 0) {
+    html += `<div class="phase-header phase1-header">PHASE 1: Quick Wins (${quickWins.length}건, 모멘텀 확보)</div>`;
+    for (const t of quickWins) { if (!addBlock(t, 1)) break; }
+
+    // 5min break
+    if (currentTime < endTime) {
+      html += `<div class="time-block break"><div class="time-label">${formatTime(currentTime)}</div><div class="time-content"><div class="title">짧은 휴식 (5분)</div></div></div>`;
+      currentTime += 5;
+    }
+  }
+
+  // Phase 2
+  if (deepWork.length > 0 && currentTime < endTime) {
+    html += `<div class="phase-header phase2-header">PHASE 2: Deep Work (${deepWork.length}건, 핵심 업무)</div>`;
+    for (const t of deepWork) {
+      if (!addBlock(t, 2)) break;
+      // Break between deep work blocks
+      if (currentTime < endTime && t.timeMin >= 60) {
+        html += `<div class="time-block break"><div class="time-label">${formatTime(currentTime)}</div><div class="time-content"><div class="title">휴식 (10분)</div></div></div>`;
+        currentTime += 10;
+      }
+    }
+  }
+
+  // Phase 3
+  if (delegate.length > 0 && currentTime < endTime) {
+    html += `<div class="phase-header phase3-header">PHASE 3: 위임/배치 처리 (${delegate.length}건)</div>`;
+    for (const t of delegate) { if (!addBlock(t, 3)) break; }
+  }
+
+  const overflow = pending.length - totalPlanned;
+  if (overflow > 0) {
+    html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${overflow}건은 오늘 시간 내 배치 불가 — 내일로 이월 권장</div>`;
+  }
+
+  html += `<div style="text-align:center;padding:16px;color:var(--text2);font-size:13px;">
+    오늘 배치: ${totalPlanned}건 | 총 예상: ${Math.floor(pending.reduce((s,t)=>s+t.timeMin,0)/60)}시간 ${pending.reduce((s,t)=>s+t.timeMin,0)%60}분
+  </div>`;
+
+  document.getElementById('planContent').innerHTML = html;
+}
+
+// ===== ACTIONS =====
+function toggleDone(id) {
+  const t = tasks.find(t => String(t.id) === String(id));
+  if (t) { t.done = !t.done; t.doneAt = t.done ? new Date().toISOString() : null; saveTasks(); renderAll(); }
+}
+
+function deleteTask(id) {
+  if (!confirm('삭제할까요?')) return;
+  tasks = tasks.filter(t => String(t.id) !== String(id));
+  saveTasks();
+  renderAll();
+}
+
+function openEdit(id) {
+  const t = tasks.find(t => String(t.id) === String(id));
+  if (!t) return;
+  editingId = id;
+  document.getElementById('editTitle').value = t.title;
+  document.getElementById('editQuad').value = t.quadrant;
+  document.getElementById('editCat').value = t.category;
+  document.getElementById('editTime').value = t.timeMin;
+  document.getElementById('editImpact').value = t.impact;
+  document.getElementById('editNote').value = t.note || '';
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+  editingId = null;
+}
+
+function saveEdit() {
+  const t = tasks.find(t => String(t.id) === String(editingId));
+  if (!t) return;
+  t.title = document.getElementById('editTitle').value;
+  t.quadrant = document.getElementById('editQuad').value;
+  t.category = document.getElementById('editCat').value;
+  t.timeMin = parseInt(document.getElementById('editTime').value) || 30;
+  t.impact = parseInt(document.getElementById('editImpact').value) || 3;
+  t.note = document.getElementById('editNote').value;
+  saveTasks();
+  closeEditModal();
+  renderAll();
+}
+
+// ===== DRAG & DROP =====
+let draggedId = null;
+function dragStart(e, id) { draggedId = id; e.dataTransfer.effectAllowed = 'move'; }
+function allowDrop(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function dragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function dropTask(e, quad) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const t = tasks.find(t => String(t.id) === String(draggedId));
+  if (t) { t.quadrant = quad; t.impact = {q1:5,q2:4,q3:2,q4:1}[quad]; saveTasks(); renderAll(); }
+  draggedId = null;
+}
+
+// ===== EXPORT/IMPORT =====
+function exportData() {
+  const data = JSON.stringify({ tasks, settings, keywords, exportedAt: new Date().toISOString() }, null, 2);
+  downloadFile(data, `task-manager-backup-${dateStr()}.json`, 'application/json');
+}
+
+function importData() { document.getElementById('fileInput').click(); }
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (data.tasks) { tasks = data.tasks; saveTasks(); }
+      if (data.settings) { settings = data.settings; saveSettingsToStorage(); }
+      if (data.keywords) { keywords = data.keywords; localStorage.setItem('etm_keywords', JSON.stringify(keywords)); }
+      renderAll();
+      alert('불러오기 완료');
+    } catch(err) { alert('파일 형식 오류'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function exportExcel() {
+  // Simple CSV-based Excel export
+  const pending = tasks.filter(t => !t.done);
+  const sorted = [...pending].sort((a,b) => quickWinScore(b) - quickWinScore(a));
+
+  let csv = '\uFEFF';  // BOM for Korean
+  csv += '업무명,사분면,카테고리,소요시간(분),임팩트,Quick Win Score,상태\n';
+  for (const t of sorted) {
+    csv += `"${t.title}",${quadLabel(t.quadrant)},${t.category},${t.timeMin},${t.impact},${quickWinScore(t)},${t.done?'완료':'미완료'}\n`;
+  }
+
+  // Action plan sheet
+  csv += '\n\n액션 플랜\n';
+  csv += '시간,업무명,카테고리,소요시간,Phase\n';
+
+  let ct = parseTime(settings.startTime);
+  const phases = [
+    { label: 'Quick Win', items: pending.filter(t=>t.timeMin<=settings.quickWinMax).sort((a,b)=>quickWinScore(b)-quickWinScore(a)) },
+    { label: 'Deep Work', items: pending.filter(t=>t.timeMin>settings.quickWinMax&&(t.quadrant==='q1'||t.quadrant==='q2')).sort((a,b)=>quickWinScore(b)-quickWinScore(a)) },
+    { label: '위임/배치', items: pending.filter(t=>t.timeMin>settings.quickWinMax&&(t.quadrant==='q3'||t.quadrant==='q4')).sort((a,b)=>quickWinScore(b)-quickWinScore(a)) },
+  ];
+
+  for (const phase of phases) {
+    for (const t of phase.items) {
+      csv += `${formatTime(ct)}-${formatTime(ct+t.timeMin)},"${t.title}",${t.category},${t.timeMin}분,${phase.label}\n`;
+      ct += t.timeMin;
+    }
+  }
+
+  downloadFile(csv, `action-plan-${dateStr()}.csv`, 'text/csv;charset=utf-8');
+}
+
+// ===== SETTINGS =====
+function saveSettings() {
+  settings.startTime = document.getElementById('setStart').value;
+  settings.endTime = document.getElementById('setEnd').value;
+  settings.lunchStart = document.getElementById('setLunchStart').value;
+  settings.lunchEnd = document.getElementById('setLunchEnd').value;
+  settings.quickWinMax = parseInt(document.getElementById('setQuickWin').value) || 15;
+  settings.deepWorkBlock = parseInt(document.getElementById('setDeepWork').value) || 90;
+  saveSettingsToStorage();
+  renderAll();
+  alert('설정 저장됨');
+}
+
+function loadSettingsUI() {
+  document.getElementById('setStart').value = settings.startTime;
+  document.getElementById('setEnd').value = settings.endTime;
+  document.getElementById('setLunchStart').value = settings.lunchStart;
+  document.getElementById('setLunchEnd').value = settings.lunchEnd;
+  document.getElementById('setQuickWin').value = settings.quickWinMax;
+  document.getElementById('setDeepWork').value = settings.deepWorkBlock;
+}
+
+function resetKeywords() {
+  keywords = JSON.parse(JSON.stringify(DEFAULT_KEYWORDS));
+  localStorage.setItem('etm_keywords', JSON.stringify(keywords));
+  alert('키워드 규칙 초기화됨');
+}
+
+// ===== TABS =====
+function switchTab(tabId) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add('active');
+  document.getElementById(`panel-${tabId}`).classList.add('active');
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+// ===== HELPERS =====
+function saveTasks() { localStorage.setItem('etm_tasks', JSON.stringify(tasks)); }
+function saveSettingsToStorage() { localStorage.setItem('etm_settings', JSON.stringify(settings)); }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function quadLabel(q) { return {q1:'Q1 긴급+중요',q2:'Q2 중요',q3:'Q3 긴급',q4:'Q4 기타'}[q]||q; }
+function parseTime(str) { const [h,m] = str.split(':').map(Number); return h*60+m; }
+function formatTime(mins) { const h = Math.floor(mins/60), m = mins%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+function dateStr() { return new Date().toISOString().slice(0,10); }
+function downloadFile(content, filename, type) {
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== SCREENSHOT OCR =====
+let ocrQueue = [];
+let ocrProcessing = false;
+
+function handleImageSelect(e) {
+  const files = Array.from(e.target.files);
+  if (files.length) processImages(files);
+  e.target.value = '';
+}
+
+function handleImageDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.borderColor = 'var(--border)';
+  const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  if (files.length) processImages(files);
+}
+
+async function processImages(files) {
+  const listEl = document.getElementById('ocrImageList');
+
+  for (const file of files) {
+    const url = URL.createObjectURL(file);
+    const id = 'ocr_' + Date.now() + Math.random();
+    ocrQueue.push({ id, file, url });
+
+    listEl.innerHTML += `<div class="ocr-thumb processing" id="${id}">
+      <img src="${url}">
+      <button class="remove" onclick="removeOcrItem('${id}')">&times;</button>
+    </div>`;
+  }
+
+  if (!ocrProcessing) processOcrQueue();
+}
+
+async function processOcrQueue() {
+  if (ocrQueue.length === 0) {
+    ocrProcessing = false;
+    document.getElementById('ocrProgress').style.display = 'none';
+    return;
+  }
+
+  ocrProcessing = true;
+  const progressEl = document.getElementById('ocrProgress');
+  const statusEl = document.getElementById('ocrStatus');
+  const barEl = document.getElementById('ocrBar');
+  progressEl.style.display = 'block';
+
+  const item = ocrQueue.shift();
+  const thumbEl = document.getElementById(item.id);
+
+  statusEl.textContent = `이미지 인식 중... (${ocrQueue.length}건 남음)`;
+  barEl.style.width = '10%';
+
+  try {
+    const result = await Tesseract.recognize(item.url, 'kor+eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          barEl.style.width = Math.round(10 + m.progress * 85) + '%';
+        }
+      }
+    });
+
+    const text = result.data.text.trim();
+    if (text) {
+      const textarea = document.getElementById('bulkInput');
+      const existing = textarea.value.trim();
+      textarea.value = existing ? existing + '\n' + text : text;
+    }
+
+    barEl.style.width = '100%';
+    if (thumbEl) {
+      thumbEl.classList.remove('processing');
+      thumbEl.classList.add('done');
+    }
+
+    statusEl.textContent = `완료! ${text.split('\n').filter(l=>l.trim()).length}줄 추출됨`;
+  } catch(err) {
+    statusEl.textContent = `오류: ${err.message}`;
+    if (thumbEl) thumbEl.classList.remove('processing');
+  }
+
+  URL.revokeObjectURL(item.url);
+
+  // Process next
+  setTimeout(() => processOcrQueue(), 300);
+}
+
+function removeOcrItem(id) {
+  ocrQueue = ocrQueue.filter(q => q.id !== id);
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function clearInput() {
+  document.getElementById('bulkInput').value = '';
+  document.getElementById('ocrImageList').innerHTML = '';
+  ocrQueue = [];
+}
+
+// Also support paste from clipboard (Ctrl+V image)
+document.addEventListener('paste', async (e) => {
+  const items = Array.from(e.clipboardData?.items || []);
+  const imageItems = items.filter(i => i.type.startsWith('image/'));
+  if (imageItems.length > 0) {
+    e.preventDefault();
+    const files = imageItems.map(i => i.getAsFile()).filter(Boolean);
+    if (files.length) processImages(files);
+  }
+});
+
+// ===== INIT =====
+loadSettingsUI();
+renderAll();
+
+// Keyboard shortcut
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeEditModal();
+});
+</script>
+</body>
+</html>
