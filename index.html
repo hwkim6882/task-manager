@@ -1236,7 +1236,7 @@ ${taskList}`;
     saveTasks();
     renderAll();
 
-    const detail = groups.map(g => `• ${g.keep_title}: ${g.remove_ids.length}건 통합 (${g.reason})`).join('\n');
+    const detail = groups.map(g => `• ${g.keep_title}: ${(g.remove_indices||[]).length}건 통합 (${g.reason})`).join('\n');
     alert(`${removed}건 중복 제거 완료!\n\n${detail}`);
 
   } catch (e) {
