@@ -172,8 +172,6 @@ textarea { resize: vertical; min-height: 120px; }
     </div>
   </header>
 
-  <div class="stats" id="stats"></div>
-
   <div class="tab-bar">
     <button class="tab active" data-tab="input">업무 입력</button>
     <button class="tab" data-tab="matrix">매트릭스</button>
@@ -801,7 +799,6 @@ function addQuickParsedTasks() {
 
 // ===== RENDERING =====
 function renderAll() {
-  renderStats();
   renderMatrix();
   renderTasks();
   renderCategoryTabs();
