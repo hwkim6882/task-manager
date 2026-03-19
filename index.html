@@ -1237,7 +1237,17 @@ JSON배열만.`;
 
   try {
     const text = await callClaude(prompt);
-    const data = parseAiJson(text);
+    console.log('ACTION PLAN RAW:', text.substring(0,500));
+    let data;
+    try {
+      data = parseAiJson(text);
+    } catch(pe) {
+      console.error('PARSE ERROR:', pe, 'RAW:', text.substring(0,300));
+      planEl.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">JSON 파싱 실패<br><pre style="text-align:left;font-size:11px;margin-top:10px;max-height:200px;overflow:auto;background:var(--surface);padding:10px;border-radius:8px;">${escHtml(text.substring(0,500))}</pre><br><button class="btn-ghost btn-sm" onclick="generatePlan()">다시 시도</button></div>`;
+      return;
+    }
+    console.log('PARSED DATA:', JSON.stringify(data).substring(0,300));
+    console.log('IS ARRAY:', Array.isArray(data), 'LENGTH:', Array.isArray(data)?data.length:'N/A');
 
     // 플랜 렌더링
     let html = '';
@@ -1293,7 +1303,8 @@ JSON배열만.`;
     } catch(saveErr) { console.warn('플랜 저장 실패:', saveErr); }
 
   } catch (e) {
-    planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}<br><br><button class="btn-ghost btn-sm" onclick="generatePlan()">다시 시도</button></div>`;
+    console.error('PLAN ERROR:', e);
+    planEl.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">플랜 생성 실패: ${escHtml(e.message || String(e))}<br><br><button class="btn-ghost btn-sm" onclick="generatePlan()">다시 시도</button></div>`;
   }
 }
 
