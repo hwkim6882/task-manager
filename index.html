@@ -649,9 +649,8 @@ function loadFromFirestore() {
         localStorage.setItem('etm_tab_order', JSON.stringify(data.tabOrder));
         restoreTabOrder(data.tabOrder);
       }
-      if (data.calendarText && data.calendarDate) {
-        localStorage.setItem('etm_calendar_text', data.calendarText);
-        localStorage.setItem('etm_calendar_date', data.calendarDate);
+      if (data.weekCalendar) {
+        localStorage.setItem('etm_week_calendar', JSON.stringify(data.weekCalendar));
       }
       if (data.actionPlan) {
         renderSavedPlan(data.actionPlan, data.actionPlanDate);
@@ -1204,18 +1203,38 @@ async function generatePlan() {
   const top = sorted.slice(0, 30);
   const taskList = top.map((t, i) => `#${i} ${t.title.replace(/"/g,'')} [${t.category}, ${t.timeMin}분]`).join('\n');
 
-  const prompt = `법률사무소 변호사의 오늘 액션 플랜을 만들어라.
+  // 현재 시간
+  const now = new Date();
+  const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  // 3일치 캘린더
+  const cal = getWeekCalendar();
+  let calStr3 = '';
+  for (let d = 0; d < 3; d++) {
+    const dt = new Date(now); dt.setDate(dt.getDate() + d);
+    const ds = dt.toISOString().slice(0,10);
+    const dayName = ['일','월','화','수','목','금','토'][dt.getDay()];
+    const dayEvents = cal[ds] || '';
+    if (dayEvents) {
+      calStr3 += `\n${ds}(${dayName}) 캘린더:\n${dayEvents}`;
+    }
+  }
+  // ICS 이벤트도 추가
+  if (calStr) calStr3 = calStr + calStr3;
+
+  const prompt = `법률사무소 변호사의 3일간 액션 플랜을 만들어라.
+현재 시각: ${nowTime} (오늘 ${nowTime} 이전 시간은 이미 지났으므로 ${nowTime} 이후부터 배치)
 업무시간: ${settings.startTime}~${settings.endTime}, 점심: ${settings.lunchStart}~${settings.lunchEnd}
-${calStr}
+${calStr3}
 
 소요시간 기준: 전화/확인=3~5분, 메일회신=5~10분, 초안작성=15~30분, 검토/분석=30~60분, 미팅/재판=실제시간
-캘린더 일정이 있으면 해당 시간대는 비워두고 나머지 시간에 업무를 배치하라.
+캘린더 일정 시간대는 비워두고 나머지에 업무 배치. 오늘 못하는 건 내일/모레로.
 
 업무(우선순위순):
 ${taskList}
 
 JSON 반환:
-{"plan":[{"start":"09:00","end":"09:05","idx":0,"title":"업무명","phase":"quick_win|deep_work|batch|break|lunch|calendar","tip":"팁"}],"summary":"요약","overflow_indices":[25,28]}
+{"days":[{"date":"2026-03-19","plan":[{"start":"14:00","end":"14:30","idx":0,"title":"업무명","phase":"quick_win|deep_work|batch|break|lunch|calendar","tip":"팁"}]},{"date":"2026-03-20","plan":[...]}],"summary":"3일 플랜 요약"}
 JSON만 반환.`;
 
   try {
@@ -1227,19 +1246,24 @@ JSON만 반환.`;
 
     if (data.summary) {
       html += `<div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;font-size:14px;color:var(--text);">${escHtml(data.summary)}</div>`;
-      }
-    // 타임라인
-    const planItems = data.plan || data;
-    if (Array.isArray(planItems) && planItems.length > 0) {
+    }
+
+    // 3일치 또는 1일치 렌더링
+    const days = data.days || [{ date: dateStr(), plan: data.plan || [] }];
+    for (const day of days) {
+      const dayName = day.date ? ['일','월','화','수','목','금','토'][new Date(day.date).getDay()] : '';
+      html += `<div style="font-size:16px;font-weight:700;color:var(--accent);padding:16px 0 8px;border-bottom:2px solid var(--accent);margin-bottom:12px;">${day.date || ''} (${dayName})</div>`;
+
+      const planItems = day.plan || [];
       let currentPhase = '';
       for (const block of planItems) {
         const phase = block.phase || '';
-        const phaseLabels = { quick_win: 'QUICK WIN', deep_work: 'DEEP WORK', batch: '배치 처리', break: '', lunch: '' };
+        const phaseLabels = { quick_win:'QUICK WIN', deep_work:'DEEP WORK', batch:'배치 처리', calendar:'📅 캘린더', break:'', lunch:'' };
         const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : phase === 'calendar' ? 'calendar' : 'break';
 
         if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
-          const phaseHeaderClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
-          html += `<div class="phase-header ${phaseHeaderClass}">${phaseLabels[phase] || phase}</div>`;
+          const hdrClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
+          html += `<div class="phase-header ${hdrClass}">${phaseLabels[phase] || phase}</div>`;
           currentPhase = phase;
         }
 
@@ -1252,13 +1276,6 @@ JSON만 반환.`;
           </div>
         </div>`;
       }
-    }
-
-    // 이월 업무
-    const overflow = data.overflow_indices || data.overflow || [];
-    if (overflow.length > 0) {
-      const names = overflow.map(o => typeof o === 'number' && top[o] ? top[o].title.substring(0,20) : escHtml(String(o)));
-      html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${overflow.length}건 내일 이월 권장: ${names.join(', ')}</div>`;
     }
 
     planEl.innerHTML = html;
@@ -2026,17 +2043,25 @@ async function processCalScreenshot(file) {
       return;
     }
 
-    status.textContent = 'AI가 일정을 분석 중...';
+    status.textContent = 'AI가 일주일 일정을 분석 중...';
     const text = await callClaude(
-      `아래는 캘린더 스크린샷에서 OCR로 추출한 텍스트이다. 오늘(${dateStr()}) 일정을 추출해라.
+      `아래는 캘린더 스크린샷에서 OCR로 추출한 텍스트이다. 오늘은 ${dateStr()}이다.
+보이는 모든 날짜의 일정을 추출하라.
 
-각 일정을 "HH:MM~HH:MM 일정명" 형식으로 반환. 한 줄에 하나씩.
-시간이 불분명하면 추정하라. 일정이 없으면 "일정 없음"만 반환.
-형식 외 다른 텍스트는 쓰지 마라.
+반드시 아래 형식으로 반환:
+2026-03-19
+09:30~10:30 일정명
+14:00~15:00 일정명
+
+2026-03-20
+10:00~11:00 일정명
+
+요일만 보이면 이번 주 날짜로 변환. 시간 불분명하면 추정.
+형식 외 다른 텍스트 쓰지 마라.
 
 OCR 텍스트:
 ${ocrText}`,
-      {model: HAIKU, maxTokens: 512}
+      {model: HAIKU, maxTokens: 1024}
     );
 
     document.getElementById('calendarText').value = text.trim();
@@ -2065,25 +2090,95 @@ document.addEventListener('paste', e => {
 }, true);
 
 // ===== CALENDAR TEXT INPUT =====
+function getWeekCalendar() {
+  return JSON.parse(localStorage.getItem('etm_week_calendar') || '{}');
+}
+
 function saveCalendarText() {
   const text = document.getElementById('calendarText').value.trim();
-  localStorage.setItem('etm_calendar_text', text);
-  localStorage.setItem('etm_calendar_date', dateStr());
+  // AI로 날짜별 파싱
+  if (claudeApiKey && text && !text.match(/^\d{4}-\d{2}-\d{2}/m)) {
+    parseWeekCalendarWithAI(text);
+  } else {
+    saveCalendarDirect(text);
+  }
+}
+
+function saveCalendarDirect(text) {
+  const cal = getWeekCalendar();
+  // 날짜 헤더가 있으면 날짜별로 분리, 없으면 오늘로
+  const dateBlocks = text.split(/(?=\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}|\d{1,2}월\s*\d{1,2}일|월요일|화요일|수요일|목요일|금요일|토요일|일요일)/);
+  let hasDateHeader = false;
+
+  for (const block of dateBlocks) {
+    const dateMatch = block.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (dateMatch) {
+      cal[dateMatch[1]] = block.trim();
+      hasDateHeader = true;
+    }
+  }
+
+  if (!hasDateHeader) {
+    cal[dateStr()] = text;
+  }
+
+  localStorage.setItem('etm_week_calendar', JSON.stringify(cal));
   if (currentUser) {
-    db.collection('users').doc(currentUser.uid).update({
-      calendarText: text,
-      calendarDate: dateStr()
-    });
+    db.collection('users').doc(currentUser.uid).update({ weekCalendar: cal });
   }
   renderCalendarDisplay();
   document.getElementById('calInput').style.display = 'none';
   showToast('일정 저장됨');
 }
 
+async function parseWeekCalendarWithAI(text) {
+  const progress = document.getElementById('calOcrProgress');
+  const status = document.getElementById('calOcrStatus');
+  progress.style.display = 'block';
+  status.textContent = 'AI가 일주일 일정을 분석 중...';
+
+  try {
+    const today = dateStr();
+    const result = await callClaude(
+      `아래 텍스트에서 일주일간의 일정을 날짜별로 추출하라. 오늘은 ${today}이다.
+요일만 있으면 이번 주 날짜로 변환하라.
+
+각 날짜별로 "HH:MM~HH:MM 일정명" 형식으로 정리.
+반드시 아래 형식으로 반환:
+2026-03-19
+09:30~10:30 파트너 회의
+14:00~15:00 미팅
+
+2026-03-20
+10:00~11:00 재판
+
+날짜와 일정만 반환. 다른 텍스트 없이.
+
+텍스트:
+${text}`,
+      {model: HAIKU, maxTokens: 1024}
+    );
+
+    saveCalendarDirect(result);
+    progress.style.display = 'none';
+  } catch(e) {
+    status.textContent = '분석 실패: ' + e.message;
+    // 원본 텍스트라도 오늘로 저장
+    const cal = getWeekCalendar();
+    cal[dateStr()] = text;
+    localStorage.setItem('etm_week_calendar', JSON.stringify(cal));
+    if (currentUser) {
+      db.collection('users').doc(currentUser.uid).update({ weekCalendar: cal });
+    }
+    renderCalendarDisplay();
+    setTimeout(() => progress.style.display = 'none', 2000);
+  }
+}
+
 function parseCalendarText() {
-  const text = localStorage.getItem('etm_calendar_text') || '';
-  const savedDate = localStorage.getItem('etm_calendar_date') || '';
-  if (savedDate !== dateStr()) return []; // 오늘 것만
+  const cal = getWeekCalendar();
+  const today = dateStr();
+  const text = cal[today] || '';
 
   const events = [];
   for (const line of text.split('\n')) {
@@ -2097,17 +2192,40 @@ function parseCalendarText() {
 
 function renderCalendarDisplay() {
   const el = document.getElementById('calDisplay');
-  const events = parseCalendarText();
-  if (events.length === 0) {
-    el.innerHTML = '<div style="font-size:13px;color:var(--text2);">오늘 등록된 일정이 없습니다. "일정 수정"을 눌러 추가하세요.</div>';
-    return;
+  if (!el) return;
+  const cal = getWeekCalendar();
+  const today = dateStr();
+  const todayEvents = parseCalendarText();
+
+  // 오늘 일정 표시
+  let html = '';
+  if (todayEvents.length > 0) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--warning);margin-bottom:6px;">오늘</div>';
+    html += todayEvents.map(e =>
+      `<div style="display:flex;gap:12px;padding:8px 12px;background:rgba(245,158,11,0.08);border-radius:8px;margin-bottom:6px;border-left:3px solid #f59e0b;">
+        <span style="font-size:13px;font-weight:600;color:var(--warning);white-space:nowrap;">${e.start}~${e.end}</span>
+        <span style="font-size:13px;">${escHtml(e.title)}</span>
+      </div>`
+    ).join('');
   }
-  el.innerHTML = events.map(e =>
-    `<div style="display:flex;gap:12px;padding:8px 12px;background:rgba(245,158,11,0.08);border-radius:8px;margin-bottom:6px;border-left:3px solid #f59e0b;">
-      <span style="font-size:13px;font-weight:600;color:var(--warning);white-space:nowrap;">${e.start}~${e.end}</span>
-      <span style="font-size:13px;">${escHtml(e.title)}</span>
-    </div>`
-  ).join('');
+
+  // 이번 주 다른 날짜 일정 요약
+  const otherDays = Object.keys(cal).filter(d => d !== today && d >= today).sort();
+  if (otherDays.length > 0) {
+    html += '<div style="font-size:12px;color:var(--text2);margin-top:12px;margin-bottom:6px;">이번 주</div>';
+    for (const day of otherDays) {
+      const dayName = ['일','월','화','수','목','금','토'][new Date(day).getDay()];
+      const lines = cal[day].split('\n').filter(l => l.match(/\d{1,2}:\d{2}/));
+      if (lines.length > 0) {
+        html += `<div style="font-size:12px;color:var(--text2);padding:4px 12px;">${day} (${dayName}) — ${lines.length}건: ${lines.map(l => l.replace(/\d{1,2}:\d{2}[~\-–]\d{1,2}:\d{2}\s*/, '').trim()).join(', ')}</div>`;
+      }
+    }
+  }
+
+  if (!html) {
+    html = '<div style="font-size:13px;color:var(--text2);">등록된 일정이 없습니다. "일정 수정"을 눌러 추가하세요.</div>';
+  }
+  el.innerHTML = html;
 }
 
 function saveClaudeSettings() {
