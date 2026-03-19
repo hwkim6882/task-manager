@@ -424,7 +424,19 @@ textarea { resize: vertical; min-height: 120px; }
       </div>
       <div id="calDisplay" style="margin-bottom:12px;"></div>
       <div id="calInput" style="display:none;margin-bottom:12px;">
-        <textarea id="calendarText" placeholder="오늘 일정을 입력하세요. 예:&#10;09:30~10:30 파트너 회의&#10;14:00~15:00 천현철 미팅&#10;16:00~17:00 KBI GROUP 화상회의" style="min-height:80px;font-size:13px;"></textarea>
+        <div id="calScreenshotArea" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;margin-bottom:8px;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('calImgInput').click()" ondrop="handleCalImageDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--warning)'" ondragleave="this.style.borderColor='var(--border)'">
+          <div style="font-size:28px;margin-bottom:6px;">📅</div>
+          <div style="font-size:13px;color:var(--text2);">캘린더 스크린샷을 드래그하거나 클릭</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">Ctrl+V 붙여넣기도 가능</div>
+        </div>
+        <input type="file" id="calImgInput" style="display:none" accept="image/*" onchange="handleCalImage(event)">
+        <div id="calOcrProgress" style="display:none;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="spinner"></div>
+            <span id="calOcrStatus" style="font-size:13px;color:var(--warning);">캘린더 스크린샷에서 일정 추출 중...</span>
+          </div>
+        </div>
+        <textarea id="calendarText" placeholder="오늘 일정을 입력하세요. 예:&#10;09:30~10:30 파트너 회의&#10;14:00~15:00 천현철 미팅&#10;16:00~17:00 KBI GROUP 화상회의&#10;&#10;또는 위에서 캘린더 스크린샷을 올리면 자동 추출됩니다." style="min-height:80px;font-size:13px;"></textarea>
         <button class="btn-primary btn-sm" style="margin-top:8px;" onclick="saveCalendarText()">일정 저장</button>
       </div>
     </div>
@@ -1971,6 +1983,86 @@ async function getTodayCalendarEvents() {
     return [];
   }
 }
+
+// ===== CALENDAR SCREENSHOT =====
+function handleCalImage(e) {
+  const file = e.target.files[0];
+  if (file) processCalScreenshot(file);
+  e.target.value = '';
+}
+
+function handleCalImageDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processCalScreenshot(file);
+}
+
+async function processCalScreenshot(file) {
+  const progress = document.getElementById('calOcrProgress');
+  const status = document.getElementById('calOcrStatus');
+  progress.style.display = 'block';
+  status.textContent = 'OCR로 텍스트 추출 중...';
+
+  try {
+    // OCR로 텍스트 추출
+    const result = await Tesseract.recognize(file, 'kor+eng', {
+      logger: m => { if (m.progress) status.textContent = `OCR 진행 중... ${Math.round(m.progress*100)}%`; }
+    });
+    const ocrText = result.data.text;
+
+    if (!ocrText.trim()) {
+      status.textContent = '텍스트를 인식하지 못했습니다.';
+      setTimeout(() => progress.style.display = 'none', 2000);
+      return;
+    }
+
+    // Claude AI로 일정 추출
+    if (!claudeApiKey) {
+      // API 키 없으면 OCR 텍스트만 넣기
+      document.getElementById('calendarText').value = ocrText;
+      status.textContent = 'OCR 완료! 수동으로 시간을 정리해주세요.';
+      setTimeout(() => progress.style.display = 'none', 3000);
+      return;
+    }
+
+    status.textContent = 'AI가 일정을 분석 중...';
+    const text = await callClaude(
+      `아래는 캘린더 스크린샷에서 OCR로 추출한 텍스트이다. 오늘(${dateStr()}) 일정을 추출해라.
+
+각 일정을 "HH:MM~HH:MM 일정명" 형식으로 반환. 한 줄에 하나씩.
+시간이 불분명하면 추정하라. 일정이 없으면 "일정 없음"만 반환.
+형식 외 다른 텍스트는 쓰지 마라.
+
+OCR 텍스트:
+${ocrText}`,
+      {model: HAIKU, maxTokens: 512}
+    );
+
+    document.getElementById('calendarText').value = text.trim();
+    status.textContent = '일정 추출 완료!';
+    setTimeout(() => progress.style.display = 'none', 2000);
+
+  } catch(e) {
+    status.textContent = '실패: ' + e.message;
+    setTimeout(() => progress.style.display = 'none', 3000);
+  }
+}
+
+// 캘린더 영역에서도 Ctrl+V 지원
+document.addEventListener('paste', e => {
+  // 액션 플랜 탭이 활성화되어 있고 calInput이 보일 때만
+  const calInput = document.getElementById('calInput');
+  if (calInput && calInput.style.display !== 'none') {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imgItem = items.find(i => i.type.startsWith('image/'));
+    if (imgItem) {
+      e.preventDefault();
+      const file = imgItem.getAsFile();
+      if (file) processCalScreenshot(file);
+    }
+  }
+}, true);
 
 // ===== CALENDAR TEXT INPUT =====
 function saveCalendarText() {
