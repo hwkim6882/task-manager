@@ -614,6 +614,9 @@ function loadFromFirestore() {
         localStorage.setItem('etm_tab_order', JSON.stringify(data.tabOrder));
         restoreTabOrder(data.tabOrder);
       }
+      if (data.actionPlan) {
+        renderSavedPlan(data.actionPlan, data.actionPlanDate);
+      }
       renderAll();
     }
   }, err => {
@@ -1088,6 +1091,52 @@ function renderTasks() {
 }
 
 // ===== ACTION PLAN (AI) =====
+function renderSavedPlan(data, planDate) {
+  const planEl = document.getElementById('planContent');
+  if (!planEl || !data) return;
+  const pending = tasks.filter(t => !t.done);
+
+  let html = '';
+  if (planDate) {
+    html += `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">생성일: ${planDate}</div>`;
+  }
+  if (data.summary) {
+    html += `<div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;font-size:14px;color:var(--text);">${escHtml(data.summary)}</div>`;
+  }
+
+  const planItems = data.plan || [];
+  if (planItems.length > 0) {
+    let currentPhase = '';
+    for (const block of planItems) {
+      const phase = block.phase || '';
+      const phaseLabels = { quick_win:'QUICK WIN', deep_work:'DEEP WORK', batch:'배치 처리', break:'', lunch:'' };
+      const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : 'break';
+
+      if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
+        const hdrClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
+        html += `<div class="phase-header ${hdrClass}">${phaseLabels[phase] || phase}</div>`;
+        currentPhase = phase;
+      }
+
+      const title = block.title || '';
+      html += `<div class="time-block ${phaseClass}">
+        <div class="time-label">${block.start || ''} - ${block.end || ''}</div>
+        <div class="time-content">
+          <div class="title">${escHtml(title)}</div>
+          ${block.tip ? `<div class="desc">${escHtml(block.tip)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+  }
+
+  const overflow = data.overflow_indices || [];
+  if (overflow.length > 0) {
+    html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${overflow.length}건 내일 이월</div>`;
+  }
+
+  planEl.innerHTML = html || '<p style="text-align:center;color:var(--text2);padding:40px;">"플랜 생성" 버튼을 눌러 오늘의 시간표를 만드세요.</p>';
+}
+
 async function generatePlan() {
   const pending = tasks.filter(t => !t.done);
   if (pending.length === 0) {
@@ -1164,6 +1213,14 @@ JSON만 반환.`;
     }
 
     planEl.innerHTML = html;
+
+    // Firestore에 플랜 저장
+    if (currentUser) {
+      db.collection('users').doc(currentUser.uid).update({
+        actionPlan: data,
+        actionPlanDate: dateStr()
+      });
+    }
 
   } catch (e) {
     planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}</div>`;
