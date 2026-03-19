@@ -1131,11 +1131,9 @@ function renderTasks() {
 // ===== ACTION PLAN (AI) =====
 let _planJustGenerated = false;
 function renderSavedPlan(data, planDate) {
-  console.log('renderSavedPlan called:', planDate, '_planJustGenerated:', _planJustGenerated, 'data:', data ? 'exists' : 'null');
-  if (_planJustGenerated) { console.log('SKIP: planJustGenerated'); return; }
+  if (_planJustGenerated) return;
   const planEl = document.getElementById('planContent');
-  if (!planEl) { console.log('SKIP: no planEl'); return; }
-  if (!data) { console.log('SKIP: no data'); return; }
+  if (!planEl || !data) return;
 
   const phaseMap = {qw:'phase1',dw:'phase2',bt:'phase3',cl:'calendar',br:'break',ln:'break',
     quick_win:'phase1',deep_work:'phase2',batch:'phase3',calendar:'calendar',break:'break',lunch:'break'};
@@ -1242,17 +1240,7 @@ JSON배열만.`;
 
   try {
     const text = await callClaude(prompt);
-    console.log('ACTION PLAN RAW:', text.substring(0,500));
-    let data;
-    try {
-      data = parseAiJson(text);
-    } catch(pe) {
-      console.error('PARSE ERROR:', pe, 'RAW:', text.substring(0,300));
-      planEl.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;">JSON 파싱 실패<br><pre style="text-align:left;font-size:11px;margin-top:10px;max-height:200px;overflow:auto;background:var(--surface);padding:10px;border-radius:8px;">${escHtml(text.substring(0,500))}</pre><br><button class="btn-ghost btn-sm" onclick="generatePlan()">다시 시도</button></div>`;
-      return;
-    }
-    console.log('PARSED DATA:', JSON.stringify(data).substring(0,300));
-    console.log('IS ARRAY:', Array.isArray(data), 'LENGTH:', Array.isArray(data)?data.length:'N/A');
+    const data = parseAiJson(text);
 
     // 플랜 렌더링
     let html = '';
