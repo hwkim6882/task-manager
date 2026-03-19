@@ -1129,7 +1129,9 @@ function renderTasks() {
 }
 
 // ===== ACTION PLAN (AI) =====
+let _planJustGenerated = false;
 function renderSavedPlan(data, planDate) {
+  if (_planJustGenerated) return; // 방금 생성한 플랜을 덮어쓰지 않음
   const planEl = document.getElementById('planContent');
   if (!planEl || !data) return;
   const pending = tasks.filter(t => !t.done);
@@ -1184,7 +1186,8 @@ async function generatePlan() {
   if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
 
   const planEl = document.getElementById('planContent');
-  planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 캘린더 확인 및 액션 플랜 생성 중...</span></div>';
+  _planJustGenerated = true;
+  planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 액션 플랜 생성 중...</span></div>';
 
   // 캘린더 일정 가져오기 (ICS URL 또는 직접 입력)
   let calEvents = await getTodayCalendarEvents();
@@ -1278,16 +1281,19 @@ JSON배열만.`;
     if (!html) html = '<p style="color:var(--text2);text-align:center;padding:20px;">플랜 데이터를 파싱할 수 없습니다.</p>';
     planEl.innerHTML = html;
 
-    // Firestore에 플랜 저장
-    if (currentUser) {
-      db.collection('users').doc(currentUser.uid).update({
-        actionPlan: data,
-        actionPlanDate: dateStr()
-      });
-    }
+    // Firestore에 플랜 저장 (배열은 객체로 감싸서 저장)
+    const saveData = Array.isArray(data) ? { plan: data } : data;
+    try {
+      if (currentUser) {
+        await db.collection('users').doc(currentUser.uid).update({
+          actionPlan: saveData,
+          actionPlanDate: dateStr()
+        });
+      }
+    } catch(saveErr) { console.warn('플랜 저장 실패:', saveErr); }
 
   } catch (e) {
-    planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}</div>`;
+    planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}<br><br><button class="btn-ghost btn-sm" onclick="generatePlan()">다시 시도</button></div>`;
   }
 }
 
