@@ -114,6 +114,7 @@ textarea { resize: vertical; min-height: 120px; }
 .time-block.phase2 { border-left-color: var(--accent); }
 .time-block.phase3 { border-left-color: var(--warning); }
 .time-block.break { border-left-color: var(--text2); opacity: 0.6; }
+.time-block.calendar { border-left-color: #f59e0b; background: rgba(245,158,11,0.08); }
 .time-label { font-size: 13px; color: var(--text2); width: 100px; flex-shrink: 0; font-weight: 600; }
 .time-content { flex: 1; }
 .time-content .title { font-size: 14px; font-weight: 500; }
@@ -468,6 +469,17 @@ textarea { resize: vertical; min-height: 120px; }
       <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">일괄 입력 시 자동 분류에 사용되는 키워드입니다.</p>
       <div id="keywordRules"></div>
       <button class="btn-ghost btn-sm" style="margin-top:10px;" onclick="resetKeywords()">기본값 복원</button>
+    </div>
+
+    <div class="card">
+      <h3>Outlook 캘린더 연동</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">Outlook 웹 → 설정 → 캘린더 → 공유 → ICS 링크를 붙여넣으세요. 액션 플랜에 일정이 자동 반영됩니다.</p>
+      <input type="url" id="icsUrl" placeholder="https://outlook.office365.com/owa/calendar/..." style="margin-bottom:8px;">
+      <div style="display:flex;gap:8px;">
+        <button class="btn-primary btn-sm" onclick="saveIcsUrl()">저장</button>
+        <button class="btn-ghost btn-sm" onclick="testIcsUrl()">테스트</button>
+      </div>
+      <div id="icsTestResult" style="margin-top:8px;font-size:13px;"></div>
     </div>
 
     <div class="card">
@@ -1109,8 +1121,8 @@ function renderSavedPlan(data, planDate) {
     let currentPhase = '';
     for (const block of planItems) {
       const phase = block.phase || '';
-      const phaseLabels = { quick_win:'QUICK WIN', deep_work:'DEEP WORK', batch:'배치 처리', break:'', lunch:'' };
-      const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : 'break';
+      const phaseLabels = { quick_win:'QUICK WIN', deep_work:'DEEP WORK', batch:'배치 처리', calendar:'📅 캘린더', break:'', lunch:'' };
+      const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : phase === 'calendar' ? 'calendar' : 'break';
 
       if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
         const hdrClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
@@ -1146,7 +1158,13 @@ async function generatePlan() {
   if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
 
   const planEl = document.getElementById('planContent');
-  planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 최적 액션 플랜을 생성 중...</span></div>';
+  planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 캘린더 확인 및 액션 플랜 생성 중...</span></div>';
+
+  // 캘린더 일정 가져오기
+  const calEvents = await getTodayCalendarEvents();
+  const calStr = calEvents.length > 0
+    ? '\n오늘 캘린더 일정 (이 시간은 비워둘 것):\n' + calEvents.map(e => `- ${e.start}~${e.end} ${e.title}${e.location?' ('+e.location+')':''}`).join('\n')
+    : '';
 
   // Q1 우선, 그다음 Q2, Q3 순으로 상위 30건만 선별
   const sorted = [...pending].sort((a,b) => {
@@ -1159,14 +1177,16 @@ async function generatePlan() {
 
   const prompt = `법률사무소 변호사의 오늘 액션 플랜을 만들어라.
 업무시간: ${settings.startTime}~${settings.endTime}, 점심: ${settings.lunchStart}~${settings.lunchEnd}
+${calStr}
 
 소요시간 기준: 전화/확인=3~5분, 메일회신=5~10분, 초안작성=15~30분, 검토/분석=30~60분, 미팅/재판=실제시간
+캘린더 일정이 있으면 해당 시간대는 비워두고 나머지 시간에 업무를 배치하라.
 
 업무(우선순위순):
 ${taskList}
 
 JSON 반환:
-{"plan":[{"start":"09:00","end":"09:05","idx":0,"phase":"quick_win","tip":"팁"}],"summary":"요약","overflow_indices":[25,28]}
+{"plan":[{"start":"09:00","end":"09:05","idx":0,"title":"업무명","phase":"quick_win|deep_work|batch|break|lunch|calendar","tip":"팁"}],"summary":"요약","overflow_indices":[25,28]}
 JSON만 반환.`;
 
   try {
@@ -1186,7 +1206,7 @@ JSON만 반환.`;
       for (const block of planItems) {
         const phase = block.phase || '';
         const phaseLabels = { quick_win: 'QUICK WIN', deep_work: 'DEEP WORK', batch: '배치 처리', break: '', lunch: '' };
-        const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : 'break';
+        const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : phase === 'calendar' ? 'calendar' : 'break';
 
         if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
           const phaseHeaderClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
@@ -1848,6 +1868,93 @@ function handleExcelImport(e) {
 let claudeApiKey = localStorage.getItem('etm_claude_key') || '';
 let claudeModel = localStorage.getItem('etm_claude_model') || 'claude-sonnet-4-6';
 
+// ===== OUTLOOK ICS =====
+let icsUrl = localStorage.getItem('etm_ics_url') || '';
+
+function saveIcsUrl() {
+  icsUrl = document.getElementById('icsUrl').value.trim();
+  localStorage.setItem('etm_ics_url', icsUrl);
+  if (currentUser) {
+    db.collection('users').doc(currentUser.uid).update({ icsUrl });
+  }
+  showToast('ICS URL 저장됨');
+}
+
+function loadIcsSettings() {
+  document.getElementById('icsUrl').value = icsUrl;
+}
+
+async function testIcsUrl() {
+  const url = document.getElementById('icsUrl').value.trim();
+  const resultEl = document.getElementById('icsTestResult');
+  if (!url) return resultEl.innerHTML = '<span style="color:var(--danger);">URL을 입력하세요</span>';
+  resultEl.innerHTML = '<span style="color:var(--accent);">연결 중...</span>';
+  try {
+    const events = await fetchIcsEvents(url);
+    resultEl.innerHTML = `<span style="color:var(--success);">성공! 오늘 일정 ${events.length}건 감지</span>`;
+    if (events.length > 0) {
+      resultEl.innerHTML += '<div style="margin-top:8px;">' + events.map(e =>
+        `<div style="font-size:12px;color:var(--text2);">• ${e.start}~${e.end} ${e.title}</div>`
+      ).join('') + '</div>';
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span style="color:var(--danger);">실패: ${e.message}</span>`;
+  }
+}
+
+async function fetchIcsEvents(url) {
+  // CORS 우회를 위해 프록시 사용
+  const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+  const resp = await fetch(proxyUrl);
+  if (!resp.ok) throw new Error('ICS 가져오기 실패');
+  const icsText = await resp.text();
+  return parseIcs(icsText);
+}
+
+function parseIcs(text) {
+  const events = [];
+  const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const blocks = text.split('BEGIN:VEVENT');
+
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i].split('END:VEVENT')[0];
+    const lines = block.split(/\r?\n/);
+    let title = '', dtstart = '', dtend = '', location = '';
+
+    for (const line of lines) {
+      if (line.startsWith('SUMMARY:')) title = line.substring(8).trim();
+      else if (line.startsWith('DTSTART')) {
+        const val = line.split(':').pop().trim();
+        dtstart = val;
+      }
+      else if (line.startsWith('DTEND')) {
+        const val = line.split(':').pop().trim();
+        dtend = val;
+      }
+      else if (line.startsWith('LOCATION:')) location = line.substring(9).trim();
+    }
+
+    // 오늘 일정만 필터
+    if (dtstart.startsWith(today)) {
+      const startTime = dtstart.includes('T') ? dtstart.substring(9,11)+':'+dtstart.substring(11,13) : '00:00';
+      const endTime = dtend.includes('T') ? dtend.substring(9,11)+':'+dtend.substring(11,13) : '23:59';
+      events.push({ title, start: startTime, end: endTime, location });
+    }
+  }
+
+  return events.sort((a,b) => a.start.localeCompare(b.start));
+}
+
+async function getTodayCalendarEvents() {
+  if (!icsUrl) return [];
+  try {
+    return await fetchIcsEvents(icsUrl);
+  } catch(e) {
+    console.warn('캘린더 로드 실패:', e);
+    return [];
+  }
+}
+
 function saveClaudeSettings() {
   claudeApiKey = document.getElementById('claudeApiKey').value.trim();
   claudeModel = document.getElementById('claudeModel').value;
@@ -2075,6 +2182,7 @@ document.addEventListener('paste', async (e) => {
 // ===== INIT =====
 loadSettingsUI();
 loadClaudeSettings();
+loadIcsSettings();
 renderAll();
 
 // ===== TAB DRAG REORDER =====
