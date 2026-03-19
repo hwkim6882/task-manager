@@ -1131,9 +1131,11 @@ function renderTasks() {
 // ===== ACTION PLAN (AI) =====
 let _planJustGenerated = false;
 function renderSavedPlan(data, planDate) {
-  if (_planJustGenerated) return;
+  console.log('renderSavedPlan called:', planDate, '_planJustGenerated:', _planJustGenerated, 'data:', data ? 'exists' : 'null');
+  if (_planJustGenerated) { console.log('SKIP: planJustGenerated'); return; }
   const planEl = document.getElementById('planContent');
-  if (!planEl || !data) return;
+  if (!planEl) { console.log('SKIP: no planEl'); return; }
+  if (!data) { console.log('SKIP: no data'); return; }
 
   const phaseMap = {qw:'phase1',dw:'phase2',bt:'phase3',cl:'calendar',br:'break',ln:'break',
     quick_win:'phase1',deep_work:'phase2',batch:'phase3',calendar:'calendar',break:'break',lunch:'break'};
