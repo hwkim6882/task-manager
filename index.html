@@ -1222,20 +1222,15 @@ async function generatePlan() {
   // ICS 이벤트도 추가
   if (calStr) calStr3 = calStr + calStr3;
 
-  const prompt = `법률사무소 변호사의 3일간 액션 플랜을 만들어라.
-현재 시각: ${nowTime} (오늘 ${nowTime} 이전 시간은 이미 지났으므로 ${nowTime} 이후부터 배치)
-업무시간: ${settings.startTime}~${settings.endTime}, 점심: ${settings.lunchStart}~${settings.lunchEnd}
-${calStr3}
+  const todayStr = dateStr();
+  const prompt = `오늘(${todayStr}) ${nowTime}부터 ${settings.endTime}까지 액션플랜. 점심${settings.lunchStart}~${settings.lunchEnd}.${calStr3 ? calStr3 : ''}
+전화/확인=5분,메일=10분,초안=30분,검토=60분,미팅=실제시간. 캘린더시간은 비워둘것.
 
-소요시간 기준: 전화/확인=3~5분, 메일회신=5~10분, 초안작성=15~30분, 검토/분석=30~60분, 미팅/재판=실제시간
-캘린더 일정 시간대는 비워두고 나머지에 업무 배치. 오늘 못하는 건 내일/모레로.
-
-업무(우선순위순):
 ${taskList}
 
-JSON 반환:
-{"days":[{"date":"2026-03-19","plan":[{"start":"14:00","end":"14:30","idx":0,"title":"업무명","phase":"quick_win|deep_work|batch|break|lunch|calendar","tip":"팁"}]},{"date":"2026-03-20","plan":[...]}],"summary":"3일 플랜 요약"}
-JSON만 반환.`;
+JSON: [{"s":"${nowTime}","e":"14:30","t":"업무명","p":"qw"}]
+p값: qw=퀵윈,dw=딥워크,bt=배치,br=휴식,ln=점심,cl=캘린더
+JSON배열만.`;
 
   try {
     const text = await callClaude(prompt);
@@ -1243,41 +1238,44 @@ JSON만 반환.`;
 
     // 플랜 렌더링
     let html = '';
+    const phaseMap = {qw:'phase1',dw:'phase2',bt:'phase3',cl:'calendar',br:'break',ln:'break',
+      quick_win:'phase1',deep_work:'phase2',batch:'phase3',calendar:'calendar',break:'break',lunch:'break'};
+    const phaseLabel = {qw:'QUICK WIN',dw:'DEEP WORK',bt:'배치 처리',cl:'📅 캘린더',
+      quick_win:'QUICK WIN',deep_work:'DEEP WORK',batch:'배치 처리',calendar:'📅 캘린더'};
+
+    // 배열 또는 days 객체 둘 다 지원
+    const planItems = Array.isArray(data) ? data : (data.plan || data.days?.[0]?.plan || []);
 
     if (data.summary) {
       html += `<div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;font-size:14px;color:var(--text);">${escHtml(data.summary)}</div>`;
     }
 
-    // 3일치 또는 1일치 렌더링
-    const days = data.days || [{ date: dateStr(), plan: data.plan || [] }];
-    for (const day of days) {
-      const dayName = day.date ? ['일','월','화','수','목','금','토'][new Date(day.date).getDay()] : '';
-      html += `<div style="font-size:16px;font-weight:700;color:var(--accent);padding:16px 0 8px;border-bottom:2px solid var(--accent);margin-bottom:12px;">${day.date || ''} (${dayName})</div>`;
+    let currentPhase = '';
+    for (const block of planItems) {
+      const p = block.p || block.phase || '';
+      const cls = phaseMap[p] || 'break';
+      const label = phaseLabel[p] || '';
 
-      const planItems = day.plan || [];
-      let currentPhase = '';
-      for (const block of planItems) {
-        const phase = block.phase || '';
-        const phaseLabels = { quick_win:'QUICK WIN', deep_work:'DEEP WORK', batch:'배치 처리', calendar:'📅 캘린더', break:'', lunch:'' };
-        const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : phase === 'calendar' ? 'calendar' : 'break';
-
-        if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
-          const hdrClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
-          html += `<div class="phase-header ${hdrClass}">${phaseLabels[phase] || phase}</div>`;
-          currentPhase = phase;
-        }
-
-        const title = block.title || (block.idx != null && top[block.idx] ? top[block.idx].title : '');
-        html += `<div class="time-block ${phaseClass}">
-          <div class="time-label">${block.start || ''} - ${block.end || ''}</div>
-          <div class="time-content">
-            <div class="title">${escHtml(title)}</div>
-            ${block.tip ? `<div class="desc">${escHtml(block.tip)}</div>` : ''}
-          </div>
-        </div>`;
+      if (label && p !== currentPhase && p !== 'br' && p !== 'ln' && p !== 'break' && p !== 'lunch') {
+        const hdrClass = cls === 'phase1' ? 'phase1-header' : cls === 'phase2' ? 'phase2-header' : cls === 'phase3' ? 'phase3-header' : '';
+        html += `<div class="phase-header ${hdrClass}">${label}</div>`;
+        currentPhase = p;
       }
+
+      const title = block.t || block.title || '';
+      const start = block.s || block.start || '';
+      const end = block.e || block.end || '';
+      const tip = block.tip || '';
+      html += `<div class="time-block ${cls}">
+        <div class="time-label">${start} - ${end}</div>
+        <div class="time-content">
+          <div class="title">${escHtml(title)}</div>
+          ${tip ? `<div class="desc">${escHtml(tip)}</div>` : ''}
+        </div>
+      </div>`;
     }
 
+    if (!html) html = '<p style="color:var(--text2);text-align:center;padding:20px;">플랜 데이터를 파싱할 수 없습니다.</p>';
     planEl.innerHTML = html;
 
     // Firestore에 플랜 저장
