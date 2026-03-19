@@ -606,6 +606,7 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 let currentUser = null;
 let unsubFirestore = null;
+let firestoreReady = false; // Firestore에서 첫 로드 완료 전까지 저장 차단
 
 function handleAuth() {
   if (currentUser) {
@@ -624,12 +625,14 @@ auth.onAuthStateChanged(user => {
     btn.style.borderColor = 'var(--border)';
     btn.style.color = 'var(--text2)';
     status.textContent = user.displayName || user.email;
+    firestoreReady = false; // 로그인 시 리셋
     loadFromFirestore();
   } else {
     btn.textContent = 'Google 로그인';
     btn.style.borderColor = '#22c55e';
     btn.style.color = '#22c55e';
     status.textContent = '';
+    firestoreReady = false;
     if (unsubFirestore) { unsubFirestore(); unsubFirestore = null; }
   }
 });
@@ -642,7 +645,24 @@ function loadFromFirestore() {
   unsubFirestore = docRef.onSnapshot(doc => {
     if (doc.exists) {
       const data = doc.data();
-      if (data.tasks) tasks = data.tasks;
+      // 서버 데이터와 로컬 데이터 충돌 방지: 더 많은 쪽을 채택
+      if (!firestoreReady && data.tasks && tasks.length > 0) {
+        const serverCount = data.tasks.length;
+        const localCount = tasks.length;
+        if (localCount > serverCount) {
+          console.warn(`[동기화] 로컬(${localCount}건)이 서버(${serverCount}건)보다 많음 → 로컬 유지, 서버에 저장`);
+          firestoreReady = true;
+          if (data.settings) { Object.assign(settings, data.settings); loadSettingsUI(); }
+          if (data.keywords) keywords = data.keywords;
+          saveToFirestore();
+          renderAll();
+          return;
+        }
+      }
+      if (data.tasks) {
+        tasks = data.tasks;
+        localStorage.setItem('etm_tasks', JSON.stringify(tasks));
+      }
       if (data.settings) { Object.assign(settings, data.settings); loadSettingsUI(); }
       if (data.keywords) keywords = data.keywords;
       if (data.tabOrder) {
@@ -655,17 +675,27 @@ function loadFromFirestore() {
       if (data.actionPlan) {
         renderSavedPlan(data.actionPlan, data.actionPlanDate);
       }
+      firestoreReady = true;
       renderAll();
+    } else {
+      // Firestore에 문서가 없으면 로컬 데이터로 생성
+      firestoreReady = true;
+      if (tasks.length > 0) saveToFirestore();
     }
   }, err => {
     console.error('Firestore onSnapshot error:', err);
     showToast('실시간 동기화 오류: ' + err.message, 5000);
+    firestoreReady = true; // 에러 시에도 차단 해제 (사용자가 아무것도 못하는 것 방지)
   });
 }
 
 let saveTimer = null;
 function saveToFirestore() {
   if (!currentUser) return;
+  if (!firestoreReady) {
+    console.warn('[동기화] Firestore 로드 전 저장 차단됨');
+    return;
+  }
   // 디바운스: 연속 저장 방지 (500ms)
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
