@@ -1327,12 +1327,24 @@ async function aiDedup() {
 
       const groups = parseAiJson(text);
       for (const g of groups) {
+        const keepIdx = g.keep ?? g.keep_idx;
+        const keepT = pending[keepIdx];
         const delList = g.del || g.remove_indices || [];
+        if (!keepT || delList.length === 0) continue;
+
+        // 삭제 항목의 핵심 키워드를 유지 항목에 병합
         for (const ri of delList) {
           if (pending[ri]) {
             toRemove.add(String(pending[ri].id));
-            const keepT = pending[g.keep || g.keep_idx];
-            details.push(`• ${keepT?keepT.title.substring(0,25):'?'} ← #${ri}`);
+            // 삭제되는 항목 제목에서 유지 항목에 없는 키워드 추출
+            const delTitle = pending[ri].title;
+            if (keepT.title.length < 100 && !keepT.title.includes(delTitle.substring(0,10))) {
+              const extra = delTitle.replace(/.*[-–]\s*/, '').substring(0, 30);
+              if (extra && !keepT.title.includes(extra.substring(0,8))) {
+                keepT.title = keepT.title.replace(/\)$/, '') + (keepT.title.includes('(') ? ', ' : ' (') + extra + ')';
+              }
+            }
+            details.push(`• ${keepT.title.substring(0,30)} ← ${delTitle.substring(0,30)}`);
           }
         }
       }
