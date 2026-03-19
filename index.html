@@ -1099,96 +1099,57 @@ async function generatePlan() {
   const planEl = document.getElementById('planContent');
   planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 최적 액션 플랜을 생성 중...</span></div>';
 
-  const taskList = pending.map(t => `- "${t.title}" [카테고리: ${t.category}, 사분면: ${quadLabel(t.quadrant)}, 현재 예상: ${t.timeMin}분]`).join('\n');
+  // Q1 우선, 그다음 Q2, Q3 순으로 상위 30건만 선별
+  const sorted = [...pending].sort((a,b) => {
+    const qOrder = {q1:0,q2:1,q3:2,q4:3};
+    if (qOrder[a.quadrant] !== qOrder[b.quadrant]) return qOrder[a.quadrant] - qOrder[b.quadrant];
+    return quickWinScore(b) - quickWinScore(a);
+  });
+  const top = sorted.slice(0, 30);
+  const taskList = top.map((t, i) => `#${i} ${t.title.replace(/"/g,'')} [${t.category}, ${t.timeMin}분]`).join('\n');
 
-  const prompt = `당신은 법률사무소 변호사의 시간 관리 전문 비서입니다.
-아래 미완료 업무 목록을 분석하여 오늘의 최적 액션 플랜을 만들어주세요.
+  const prompt = `법률사무소 변호사의 오늘 액션 플랜을 만들어라.
+업무시간: ${settings.startTime}~${settings.endTime}, 점심: ${settings.lunchStart}~${settings.lunchEnd}
 
-업무 시간: ${settings.startTime} ~ ${settings.endTime}
-점심 시간: ${settings.lunchStart} ~ ${settings.lunchEnd}
+소요시간 기준: 전화/확인=3~5분, 메일회신=5~10분, 초안작성=15~30분, 검토/분석=30~60분, 미팅/재판=실제시간
 
-미완료 업무:
+업무(우선순위순):
 ${taskList}
 
-중요 지침:
-1. **실제 소요시간을 현실적으로 재평가**하세요:
-   - 전화 한 통, 간단한 확인, 이메일 회신 = 3~5분
-   - 짧은 메일 작성, 간단한 검색/확인 = 5~10분
-   - 초안 작성, 서류 정리, 짧은 보고 = 15~30분
-   - 계약서 검토, 전략 수립, 분석 = 30~60분
-   - 미팅, 재판, 심문 = 실제 소요시간
-   - 쇼핑/주문 (온라인) = 5~10분, (오프라인) = 60분+
-2. 긴급+중요(Q1)부터, 짧은 업무 먼저 처리 (Quick Win)
-3. 집중력이 높은 오전에 Deep Work 배치
-4. 점심 전후로 가벼운 업무 배치
-5. 이동/외부 업무는 묶어서 배치
-
-JSON으로 반환하세요:
-{
-  "tasks": [
-    { "id": 업무id(숫자), "title": "업무명", "realTime": 실제소요시간(분), "reason": "시간 판단 근거" }
-  ],
-  "plan": [
-    { "start": "09:00", "end": "09:05", "title": "업무명", "phase": "quick_win|deep_work|batch|break|lunch", "tip": "실행 팁" }
-  ],
-  "summary": "오늘 플랜 요약 (1-2문장)",
-  "overflow": ["시간 내 처리 불가한 업무명들"]
-}
-
-JSON만 반환하세요.`;
+JSON 반환:
+{"plan":[{"start":"09:00","end":"09:05","idx":0,"phase":"quick_win","tip":"팁"}],"summary":"요약","overflow_indices":[25,28]}
+JSON만 반환.`;
 
   try {
     const text = await callClaude(prompt);
     const data = parseAiJson(text);
-
-    // AI가 재평가한 소요시간을 업무에 반영
-    if (data.tasks) {
-      for (const aiTask of data.tasks) {
-        const t = tasks.find(t => String(t.id) === String(aiTask.id));
-        if (t && aiTask.realTime) {
-          t.timeMin = aiTask.realTime;
-        }
-      }
-      saveTasks();
-    }
 
     // 플랜 렌더링
     let html = '';
 
     if (data.summary) {
       html += `<div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;font-size:14px;color:var(--text);">${escHtml(data.summary)}</div>`;
-    }
-
-    // 시간 재평가 표시
-    if (data.tasks && data.tasks.length > 0) {
-      html += `<div style="margin-bottom:16px;">
-        <div class="phase-header" style="color:var(--accent2);">소요시간 재평가</div>`;
-      for (const t of data.tasks) {
-        html += `<div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:13px;border-bottom:1px solid var(--border);">
-          <span>${escHtml(t.title)}</span>
-          <span style="color:var(--success);font-weight:600;">${t.realTime}분 <span style="color:var(--text2);font-weight:400;">— ${escHtml(t.reason || '')}</span></span>
-        </div>`;
       }
-      html += '</div>';
-    }
-
     // 타임라인
-    if (data.plan && data.plan.length > 0) {
+    const planItems = data.plan || data;
+    if (Array.isArray(planItems) && planItems.length > 0) {
       let currentPhase = '';
-      for (const block of data.plan) {
+      for (const block of planItems) {
+        const phase = block.phase || '';
         const phaseLabels = { quick_win: 'QUICK WIN', deep_work: 'DEEP WORK', batch: '배치 처리', break: '', lunch: '' };
-        const phaseClass = block.phase === 'quick_win' ? 'phase1' : block.phase === 'deep_work' ? 'phase2' : block.phase === 'batch' ? 'phase3' : 'break';
+        const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : 'break';
 
-        if (block.phase !== currentPhase && block.phase !== 'break' && block.phase !== 'lunch') {
-          const phaseHeaderClass = block.phase === 'quick_win' ? 'phase1-header' : block.phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
-          html += `<div class="phase-header ${phaseHeaderClass}">${phaseLabels[block.phase] || block.phase}</div>`;
-          currentPhase = block.phase;
+        if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
+          const phaseHeaderClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
+          html += `<div class="phase-header ${phaseHeaderClass}">${phaseLabels[phase] || phase}</div>`;
+          currentPhase = phase;
         }
 
+        const title = block.title || (block.idx != null && top[block.idx] ? top[block.idx].title : '');
         html += `<div class="time-block ${phaseClass}">
-          <div class="time-label">${block.start} - ${block.end}</div>
+          <div class="time-label">${block.start || ''} - ${block.end || ''}</div>
           <div class="time-content">
-            <div class="title">${escHtml(block.title)}</div>
+            <div class="title">${escHtml(title)}</div>
             ${block.tip ? `<div class="desc">${escHtml(block.tip)}</div>` : ''}
           </div>
         </div>`;
@@ -1196,12 +1157,13 @@ JSON만 반환하세요.`;
     }
 
     // 이월 업무
-    if (data.overflow && data.overflow.length > 0) {
-      html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${data.overflow.length}건 내일 이월 권장: ${data.overflow.map(o => escHtml(o)).join(', ')}</div>`;
+    const overflow = data.overflow_indices || data.overflow || [];
+    if (overflow.length > 0) {
+      const names = overflow.map(o => typeof o === 'number' && top[o] ? top[o].title.substring(0,20) : escHtml(String(o)));
+      html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${overflow.length}건 내일 이월 권장: ${names.join(', ')}</div>`;
     }
 
     planEl.innerHTML = html;
-    renderAll();
 
   } catch (e) {
     planEl.innerHTML = `<div style="color:var(--danger);padding:40px;text-align:center;">플랜 생성 실패: ${escHtml(e.message)}</div>`;
