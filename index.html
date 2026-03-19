@@ -1131,10 +1131,14 @@ function renderTasks() {
 // ===== ACTION PLAN (AI) =====
 let _planJustGenerated = false;
 function renderSavedPlan(data, planDate) {
-  if (_planJustGenerated) return; // 방금 생성한 플랜을 덮어쓰지 않음
+  if (_planJustGenerated) return;
   const planEl = document.getElementById('planContent');
   if (!planEl || !data) return;
-  const pending = tasks.filter(t => !t.done);
+
+  const phaseMap = {qw:'phase1',dw:'phase2',bt:'phase3',cl:'calendar',br:'break',ln:'break',
+    quick_win:'phase1',deep_work:'phase2',batch:'phase3',calendar:'calendar',break:'break',lunch:'break'};
+  const phaseLabel = {qw:'QUICK WIN',dw:'DEEP WORK',bt:'배치 처리',cl:'📅 캘린더',
+    quick_win:'QUICK WIN',deep_work:'DEEP WORK',batch:'배치 처리',calendar:'📅 캘린더'};
 
   let html = '';
   if (planDate) {
@@ -1144,34 +1148,33 @@ function renderSavedPlan(data, planDate) {
     html += `<div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;font-size:14px;color:var(--text);">${escHtml(data.summary)}</div>`;
   }
 
-  const planItems = data.plan || [];
+  // 배열 또는 {plan:[...]} 둘 다 지원
+  const planItems = Array.isArray(data) ? data : (data.plan || []);
   if (planItems.length > 0) {
     let currentPhase = '';
     for (const block of planItems) {
-      const phase = block.phase || '';
-      const phaseLabels = { quick_win:'QUICK WIN', deep_work:'DEEP WORK', batch:'배치 처리', calendar:'📅 캘린더', break:'', lunch:'' };
-      const phaseClass = phase === 'quick_win' ? 'phase1' : phase === 'deep_work' ? 'phase2' : phase === 'batch' ? 'phase3' : phase === 'calendar' ? 'calendar' : 'break';
+      const p = block.p || block.phase || '';
+      const cls = phaseMap[p] || 'break';
+      const label = phaseLabel[p] || '';
 
-      if (phase !== currentPhase && phase !== 'break' && phase !== 'lunch') {
-        const hdrClass = phase === 'quick_win' ? 'phase1-header' : phase === 'deep_work' ? 'phase2-header' : 'phase3-header';
-        html += `<div class="phase-header ${hdrClass}">${phaseLabels[phase] || phase}</div>`;
-        currentPhase = phase;
+      if (label && p !== currentPhase && p !== 'br' && p !== 'ln' && p !== 'break' && p !== 'lunch') {
+        const hdrClass = cls === 'phase1' ? 'phase1-header' : cls === 'phase2' ? 'phase2-header' : cls === 'phase3' ? 'phase3-header' : '';
+        html += `<div class="phase-header ${hdrClass}">${label}</div>`;
+        currentPhase = p;
       }
 
-      const title = block.title || '';
-      html += `<div class="time-block ${phaseClass}">
-        <div class="time-label">${block.start || ''} - ${block.end || ''}</div>
+      const title = block.t || block.title || '';
+      const start = block.s || block.start || '';
+      const end = block.e || block.end || '';
+      const tip = block.tip || '';
+      html += `<div class="time-block ${cls}">
+        <div class="time-label">${start} - ${end}</div>
         <div class="time-content">
           <div class="title">${escHtml(title)}</div>
-          ${block.tip ? `<div class="desc">${escHtml(block.tip)}</div>` : ''}
+          ${tip ? `<div class="desc">${escHtml(tip)}</div>` : ''}
         </div>
       </div>`;
     }
-  }
-
-  const overflow = data.overflow_indices || [];
-  if (overflow.length > 0) {
-    html += `<div style="text-align:center;padding:16px;color:var(--warning);font-size:13px;">${overflow.length}건 내일 이월</div>`;
   }
 
   planEl.innerHTML = html || '<p style="text-align:center;color:var(--text2);padding:40px;">"플랜 생성" 버튼을 눌러 오늘의 시간표를 만드세요.</p>';
