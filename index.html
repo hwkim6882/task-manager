@@ -1862,29 +1862,35 @@ function renderTaskItem(t) {
 function parseAiJson(text) {
   let s = text.trim();
   // 코드블록 제거
-  s = s.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '');
-  // 앞뒤 비-JSON 텍스트 제거
-  const firstBracket = s.indexOf('[') !== -1 ? s.indexOf('[') : s.indexOf('{');
-  const lastBracket = s.lastIndexOf(']') !== -1 ? s.lastIndexOf(']') : s.lastIndexOf('}');
-  if (firstBracket !== -1 && lastBracket !== -1) {
-    s = s.substring(firstBracket, lastBracket + 1);
+  s = s.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+  // JSON 시작점 찾기: { 또는 [ 중 먼저 나오는 것
+  const iObj = s.indexOf('{');
+  const iArr = s.indexOf('[');
+  let first, last;
+  if (iObj === -1 && iArr === -1) throw new Error('JSON을 찾을 수 없습니다.');
+  if (iObj === -1) { first = iArr; last = s.lastIndexOf(']'); }
+  else if (iArr === -1) { first = iObj; last = s.lastIndexOf('}'); }
+  else if (iObj < iArr) { first = iObj; last = s.lastIndexOf('}'); }
+  else { first = iArr; last = s.lastIndexOf(']'); }
+  if (first !== -1 && last !== -1) {
+    s = s.substring(first, last + 1);
   }
-  // 1차 시도: 그대로 파싱
+  // 1차: 그대로
   try { return JSON.parse(s); } catch(e1) {}
-  // 2차 시도: 잘린 JSON 복구 (마지막 완전한 객체까지만 파싱)
-  try {
-    // 불완전한 마지막 객체 제거
-    const lastComplete = s.lastIndexOf('},');
-    if (lastComplete > 0) {
-      const fixed = s.substring(0, lastComplete + 1) + ']';
-      return JSON.parse(fixed);
-    }
-  } catch(e2) {}
-  // 3차 시도: 줄바꿈 내 제어문자 제거 후 재시도
+  // 2차: 제어문자 제거
   try {
     const cleaned = s.replace(/[\x00-\x1f]/g, ' ').replace(/,\s*([}\]])/g, '$1');
     return JSON.parse(cleaned);
+  } catch(e2) {}
+  // 3차: 잘린 배열 복구
+  try {
+    const lc = s.lastIndexOf('},');
+    if (lc > 0) return JSON.parse(s.substring(0, lc + 1) + ']}');
   } catch(e3) {}
+  try {
+    const lc = s.lastIndexOf('},');
+    if (lc > 0) return JSON.parse(s.substring(0, lc + 1) + ']');
+  } catch(e4) {}
   throw new Error('AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.');
 }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
