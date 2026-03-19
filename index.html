@@ -854,7 +854,7 @@ async function quickAiExtract() {
 - 개인: 병원, 운동, 가족, 차량 등 사적인 용무
 
 각 업무를 JSON 배열로 반환:
-- title: 업무 제목 (구체적으로, 관련 인물/회사명/사건명/핵심 내용을 모두 포함. 생략하지 말 것. 50자 이상 OK)
+- title: 업무 제목. 원문의 사건번호, 금액, 날짜, 인물명, 조건 등 구체적 정보를 절대 생략하지 말 것. 원문 그대로 포함. 100자 이상도 OK
 - quad: 사분면 (q1=긴급+중요, q2=중요+긴급아님, q3=긴급+중요아님, q4=둘다아님)
 - cat: 카테고리 (${categories} 중 하나)
 - time: 예상 소요시간(분)
@@ -1338,9 +1338,9 @@ async function aiDedup() {
             toRemove.add(String(pending[ri].id));
             // 삭제되는 항목 제목에서 유지 항목에 없는 키워드 추출
             const delTitle = pending[ri].title;
-            if (keepT.title.length < 100 && !keepT.title.includes(delTitle.substring(0,10))) {
-              const extra = delTitle.replace(/.*[-–]\s*/, '').substring(0, 30);
-              if (extra && !keepT.title.includes(extra.substring(0,8))) {
+            if (!keepT.title.includes(delTitle.substring(0,15))) {
+              const extra = delTitle.replace(/.*[-–—]\s*/, '') || delTitle;
+              if (extra && !keepT.title.includes(extra.substring(0,10))) {
                 keepT.title = keepT.title.replace(/\)$/, '') + (keepT.title.includes('(') ? ', ' : ' (') + extra + ')';
               }
             }
@@ -1824,7 +1824,7 @@ async function extractTasksFromDocs() {
 - 상대방이 할 일 (내가 아닌)
 
 각 할 일을 JSON 배열로 반환하세요:
-- title: 업무 제목 (구체적으로, 관련 인물/회사명/사건명/핵심 내용을 모두 포함. 생략하지 말 것. 50자 이상 OK)
+- title: 업무 제목. 원문의 사건번호, 금액, 날짜, 인물명, 조건 등 구체적 정보를 절대 생략하지 말 것. 원문 그대로 포함. 100자 이상도 OK
 - quad: 사분면 (q1=긴급+중요, q2=중요+긴급아님, q3=긴급+중요아님, q4=둘다아님)
 - cat: 카테고리 (${categories} 중 하나)
 - time: 예상 소요시간(분)
