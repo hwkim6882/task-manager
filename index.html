@@ -418,8 +418,19 @@ textarea { resize: vertical; min-height: 120px; }
   <!-- 4. 액션 플랜 -->
   <div class="panel" id="panel-plan">
     <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3>오늘의 일정</h3>
+        <button class="btn-ghost btn-sm" onclick="document.getElementById('calInput').style.display=document.getElementById('calInput').style.display==='none'?'block':'none'">일정 수정</button>
+      </div>
+      <div id="calDisplay" style="margin-bottom:12px;"></div>
+      <div id="calInput" style="display:none;margin-bottom:12px;">
+        <textarea id="calendarText" placeholder="오늘 일정을 입력하세요. 예:&#10;09:30~10:30 파트너 회의&#10;14:00~15:00 천현철 미팅&#10;16:00~17:00 KBI GROUP 화상회의" style="min-height:80px;font-size:13px;"></textarea>
+        <button class="btn-primary btn-sm" style="margin-top:8px;" onclick="saveCalendarText()">일정 저장</button>
+      </div>
+    </div>
+    <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3>오늘의 액션 플랜</h3>
+        <h3>액션 플랜</h3>
         <div style="display:flex;gap:8px;">
           <button class="btn-primary btn-sm" onclick="generatePlan()">플랜 생성</button>
           <button class="btn-success btn-sm" onclick="exportExcel()">Excel 내보내기</button>
@@ -625,6 +636,10 @@ function loadFromFirestore() {
       if (data.tabOrder) {
         localStorage.setItem('etm_tab_order', JSON.stringify(data.tabOrder));
         restoreTabOrder(data.tabOrder);
+      }
+      if (data.calendarText && data.calendarDate) {
+        localStorage.setItem('etm_calendar_text', data.calendarText);
+        localStorage.setItem('etm_calendar_date', data.calendarDate);
       }
       if (data.actionPlan) {
         renderSavedPlan(data.actionPlan, data.actionPlanDate);
@@ -1160,10 +1175,12 @@ async function generatePlan() {
   const planEl = document.getElementById('planContent');
   planEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:40px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent);">AI가 캘린더 확인 및 액션 플랜 생성 중...</span></div>';
 
-  // 캘린더 일정 가져오기
-  const calEvents = await getTodayCalendarEvents();
+  // 캘린더 일정 가져오기 (ICS URL 또는 직접 입력)
+  let calEvents = await getTodayCalendarEvents();
+  const textEvents = parseCalendarText();
+  calEvents = [...calEvents, ...textEvents];
   const calStr = calEvents.length > 0
-    ? '\n오늘 캘린더 일정 (이 시간은 비워둘 것):\n' + calEvents.map(e => `- ${e.start}~${e.end} ${e.title}${e.location?' ('+e.location+')':''}`).join('\n')
+    ? '\n오늘 캘린더 일정 (이 시간은 비워둘 것):\n' + calEvents.map(e => `- ${e.start}~${e.end} ${e.title}`).join('\n')
     : '';
 
   // Q1 우선, 그다음 Q2, Q3 순으로 상위 30건만 선별
@@ -1955,6 +1972,52 @@ async function getTodayCalendarEvents() {
   }
 }
 
+// ===== CALENDAR TEXT INPUT =====
+function saveCalendarText() {
+  const text = document.getElementById('calendarText').value.trim();
+  localStorage.setItem('etm_calendar_text', text);
+  localStorage.setItem('etm_calendar_date', dateStr());
+  if (currentUser) {
+    db.collection('users').doc(currentUser.uid).update({
+      calendarText: text,
+      calendarDate: dateStr()
+    });
+  }
+  renderCalendarDisplay();
+  document.getElementById('calInput').style.display = 'none';
+  showToast('일정 저장됨');
+}
+
+function parseCalendarText() {
+  const text = localStorage.getItem('etm_calendar_text') || '';
+  const savedDate = localStorage.getItem('etm_calendar_date') || '';
+  if (savedDate !== dateStr()) return []; // 오늘 것만
+
+  const events = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})\s+(.+)/);
+    if (m) {
+      events.push({ start: m[1], end: m[2], title: m[3].trim() });
+    }
+  }
+  return events;
+}
+
+function renderCalendarDisplay() {
+  const el = document.getElementById('calDisplay');
+  const events = parseCalendarText();
+  if (events.length === 0) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text2);">오늘 등록된 일정이 없습니다. "일정 수정"을 눌러 추가하세요.</div>';
+    return;
+  }
+  el.innerHTML = events.map(e =>
+    `<div style="display:flex;gap:12px;padding:8px 12px;background:rgba(245,158,11,0.08);border-radius:8px;margin-bottom:6px;border-left:3px solid #f59e0b;">
+      <span style="font-size:13px;font-weight:600;color:var(--warning);white-space:nowrap;">${e.start}~${e.end}</span>
+      <span style="font-size:13px;">${escHtml(e.title)}</span>
+    </div>`
+  ).join('');
+}
+
 function saveClaudeSettings() {
   claudeApiKey = document.getElementById('claudeApiKey').value.trim();
   claudeModel = document.getElementById('claudeModel').value;
@@ -2183,6 +2246,7 @@ document.addEventListener('paste', async (e) => {
 loadSettingsUI();
 loadClaudeSettings();
 loadIcsSettings();
+renderCalendarDisplay();
 renderAll();
 
 // ===== TAB DRAG REORDER =====
