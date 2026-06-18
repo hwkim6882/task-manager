@@ -168,6 +168,23 @@ textarea { resize: vertical; min-height: 120px; }
 /* Sticky tab bar */
 .tab-bar { position: sticky; top: 0; z-index: 50; }
 
+/* Search bar */
+.search-bar { position: relative; margin-bottom: 16px; }
+.search-bar input { padding-left: 38px; background: var(--surface); border: 1px solid var(--border); font-size: 14px; }
+.search-bar input:focus { border-color: var(--accent); }
+.search-bar .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text2); font-size: 16px; pointer-events: none; }
+.search-bar .search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer; padding: 4px; min-height: auto; }
+.search-bar .search-clear:hover { color: var(--text); }
+.search-results-info { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+
+/* Completed tab */
+.completed-item { background: var(--surface); border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); opacity: 0.7; transition: all 0.2s; }
+.completed-item:hover { opacity: 1; border-color: var(--success); }
+.completed-item .task-title { text-decoration: line-through; }
+.completed-item .done-date { font-size: 11px; color: var(--text2); white-space: nowrap; }
+.btn-restore { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); padding: 6px 12px; font-size: 12px; }
+.btn-restore:hover { background: rgba(16,185,129,0.3); }
+
 /* Responsive */
 @media (max-width: 768px) {
   .matrix { grid-template-columns: 1fr; }
@@ -200,6 +217,12 @@ textarea { resize: vertical; min-height: 120px; }
 
   <div id="dashboard" style="display:flex;align-items:center;gap:16px;padding:12px 0;margin-bottom:8px;"></div>
 
+  <div class="search-bar">
+    <span class="search-icon">&#128269;</span>
+    <input type="text" id="searchInput" placeholder="업무 검색... (제목, 카테고리, 메모)" oninput="handleSearch()">
+    <button class="search-clear" id="searchClear" onclick="clearSearch()" style="display:none;">&times;</button>
+  </div>
+
   <div class="tab-bar" id="tabBar">
     <button class="tab active" data-tab="input" draggable="true">업무 입력</button>
     <button class="tab" data-tab="matrix" draggable="true">매트릭스</button>
@@ -209,6 +232,7 @@ textarea { resize: vertical; min-height: 120px; }
     <button class="tab" data-tab="cat-마케팅" draggable="true">마케팅</button>
     <button class="tab" data-tab="cat-개인" draggable="true">개인</button>
     <button class="tab" data-tab="cat-쇼핑" draggable="true">쇼핑</button>
+    <button class="tab" data-tab="completed" draggable="true">완료</button>
     <button class="tab" data-tab="plan" draggable="true">액션 플랜</button>
     <button class="tab" data-tab="settings" draggable="true">설정</button>
   </div>
@@ -415,6 +439,28 @@ textarea { resize: vertical; min-height: 120px; }
     <div class="task-list" id="catList-쇼핑"></div>
   </div>
 
+  <!-- Search Results -->
+  <div class="panel" id="panel-search">
+    <div id="searchResultsInfo" class="search-results-info"></div>
+    <div class="task-list" id="searchResults"></div>
+  </div>
+
+  <!-- 완료된 업무 -->
+  <div class="panel" id="panel-completed">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="font-size:16px;">완료된 업무</h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="completedSort" onchange="renderCompleted()" style="width:auto;padding:6px 10px;font-size:12px;">
+          <option value="recent">최근 완료순</option>
+          <option value="oldest">오래된순</option>
+          <option value="category">카테고리순</option>
+        </select>
+        <button class="btn-danger btn-sm" onclick="clearAllCompleted()">완료 항목 전체 삭제</button>
+      </div>
+    </div>
+    <div class="task-list" id="completedList"></div>
+  </div>
+
   <!-- 4. 액션 플랜 -->
   <div class="panel" id="panel-plan">
     <div class="card">
@@ -506,15 +552,27 @@ textarea { resize: vertical; min-height: 120px; }
     </div>
 
     <div class="card">
-      <h3>Claude API 설정</h3>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">업무 분석에 Claude AI를 사용합니다. API 키는 브라우저에만 저장됩니다.</p>
+      <h3>AI API 설정</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px;">OpenAI/Codex API를 먼저 사용하고, 제한이나 일시 오류가 있으면 Claude API로 전환합니다. API 키는 브라우저에만 저장됩니다.</p>
       <div class="settings-grid" style="margin-top:12px;">
         <div class="form-group">
-          <label>API Key</label>
+          <label>OpenAI API Key</label>
+          <input type="password" id="openaiApiKey" placeholder="sk-..." value="">
+        </div>
+        <div class="form-group">
+          <label>OpenAI 모델</label>
+          <select id="openaiModel">
+            <option value="gpt-5.5">GPT-5.5 (고품질)</option>
+            <option value="gpt-5.4">GPT-5.4</option>
+            <option value="gpt-5.4-mini">GPT-5.4 mini (빠름/저렴)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Claude API Key (폴백)</label>
           <input type="password" id="claudeApiKey" placeholder="sk-ant-..." value="">
         </div>
         <div class="form-group">
-          <label>분석 모델 (할일 추출, 액션 플랜)</label>
+          <label>Claude 모델 (폴백)</label>
           <select id="claudeModel">
             <option value="claude-sonnet-4-6">Sonnet 4.6 (고품질)</option>
             <option value="claude-haiku-4-5-20251001">Haiku 4.5 (저렴)</option>
@@ -871,7 +929,7 @@ let quickParsedItems = [];
 async function quickAiExtract() {
   const raw = document.getElementById('quickInput').value.trim();
   if (!raw) return alert('텍스트를 입력해주세요.');
-  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+  if (!hasAiProvider()) return alert('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
 
   const categories = Object.keys(keywords.category).join(', ');
   const prompt = `당신은 법률사무소 변호사의 업무 비서입니다. 아래 자유로운 텍스트에서 할 일(Action Items)을 추출해주세요.
@@ -976,6 +1034,7 @@ function _renderAllNow() {
   renderMatrix();
   renderTasks();
   renderCategoryTabs();
+  renderCompleted();
 }
 
 function showToast(msg, duration=3000) {
@@ -1216,7 +1275,7 @@ async function generatePlan() {
     document.getElementById('planContent').innerHTML = '<p style="text-align:center;color:var(--text2);padding:40px;">미완료 업무가 없습니다.</p>';
     return;
   }
-  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+  if (!hasAiProvider()) return alert('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
 
   const planEl = document.getElementById('planContent');
   _planJustGenerated = true;
@@ -1335,7 +1394,7 @@ JSON배열만.`;
 async function aiDedup() {
   const pending = tasks.filter(t => !t.done);
   if (pending.length < 2) return alert('업무가 2건 미만입니다.');
-  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+  if (!hasAiProvider()) return alert('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
 
   const taskListEl = document.getElementById('taskList');
   taskListEl.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:30px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">AI가 중복 업무를 분석 중...</span></div>';
@@ -1403,7 +1462,7 @@ async function aiDedup() {
 async function aiGroupByCase(cat) {
   const pending = tasks.filter(t => t.category === cat && !t.done);
   if (pending.length === 0) return alert(`${cat} 업무가 없습니다.`);
-  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+  if (!hasAiProvider()) return alert('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
 
   const el = document.getElementById('catList-' + cat);
   el.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:30px;justify-content:center;"><div class="spinner"></div><span style="color:var(--accent2);">AI가 사건/프로젝트별로 그룹화 중...</span></div>';
@@ -1458,7 +1517,7 @@ JSON 배열만 반환하세요.`;
 async function aiReclassifyMatrix() {
   const pending = tasks.filter(t => !t.done);
   if (pending.length === 0) return alert('미완료 업무가 없습니다.');
-  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+  if (!hasAiProvider()) return alert('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
 
   const taskList = pending.map((t, i) => `- #${i} "${t.title}" [카테고리: ${t.category}, 현재: ${quadLabel(t.quadrant)}]`).join('\n');
 
@@ -1512,7 +1571,13 @@ JSON 배열만 반환하세요.`;
 // ===== ACTIONS =====
 function toggleDone(id) {
   const t = tasks.find(t => String(t.id) === String(id));
-  if (t) { t.done = !t.done; t.doneAt = t.done ? new Date().toISOString() : null; saveTasks(); renderAll(); }
+  if (t) {
+    t.done = !t.done;
+    t.doneAt = t.done ? new Date().toISOString() : null;
+    saveTasks();
+    renderAll();
+    if (t.done) showToast('완료 처리됨 — "완료" 탭에서 복원할 수 있습니다.');
+  }
 }
 
 function deleteTask(id) {
@@ -1833,7 +1898,7 @@ async function parseExcel(file) {
 async function extractTasksFromDocs() {
   const raw = document.getElementById('bulkInput').value.trim();
   if (!raw) return alert('먼저 문서를 업로드하거나 텍스트를 입력해주세요.');
-  if (!claudeApiKey) return alert('설정 탭에서 Claude API Key를 입력해주세요.');
+  if (!hasAiProvider()) return alert('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
 
   const categories = Object.keys(keywords.category).join(', ');
   const prompt = `당신은 법률사무소 변호사의 업무 비서입니다. 아래 텍스트는 이메일, 회의록, 메모, 문서 등에서 추출한 내용입니다.
@@ -1961,6 +2026,10 @@ function handleExcelImport(e) {
 }
 
 // ===== CLAUDE API =====
+let openaiApiKey = localStorage.getItem('etm_openai_key') || '';
+const OPENAI_MODELS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'];
+let openaiModel = localStorage.getItem('etm_openai_model') || 'gpt-5.5';
+if (!OPENAI_MODELS.includes(openaiModel)) openaiModel = 'gpt-5.5';
 let claudeApiKey = localStorage.getItem('etm_claude_key') || '';
 let claudeModel = localStorage.getItem('etm_claude_model') || 'claude-sonnet-4-6';
 
@@ -2085,7 +2154,7 @@ async function processCalScreenshot(file) {
     }
 
     // Claude AI로 일정 추출
-    if (!claudeApiKey) {
+    if (!hasAiProvider()) {
       // API 키 없으면 OCR 텍스트만 넣기
       document.getElementById('calendarText').value = ocrText;
       status.textContent = 'OCR 완료! 수동으로 시간을 정리해주세요.';
@@ -2147,7 +2216,7 @@ function getWeekCalendar() {
 function saveCalendarText() {
   const text = document.getElementById('calendarText').value.trim();
   // AI로 날짜별 파싱
-  if (claudeApiKey && text && !text.match(/^\d{4}-\d{2}-\d{2}/m)) {
+  if (hasAiProvider() && text && !text.match(/^\d{4}-\d{2}-\d{2}/m)) {
     parseWeekCalendarWithAI(text);
   } else {
     saveCalendarDirect(text);
@@ -2279,21 +2348,99 @@ function renderCalendarDisplay() {
 }
 
 function saveClaudeSettings() {
+  openaiApiKey = document.getElementById('openaiApiKey').value.trim();
+  openaiModel = document.getElementById('openaiModel').value;
   claudeApiKey = document.getElementById('claudeApiKey').value.trim();
   claudeModel = document.getElementById('claudeModel').value;
+  localStorage.setItem('etm_openai_key', openaiApiKey);
+  localStorage.setItem('etm_openai_model', openaiModel);
   localStorage.setItem('etm_claude_key', claudeApiKey);
   localStorage.setItem('etm_claude_model', claudeModel);
   alert('API 설정 저장됨');
 }
 
 function loadClaudeSettings() {
+  document.getElementById('openaiApiKey').value = openaiApiKey;
+  document.getElementById('openaiModel').value = openaiModel;
   document.getElementById('claudeApiKey').value = claudeApiKey;
   document.getElementById('claudeModel').value = claudeModel;
 }
 
-// ===== CLAUDE API HELPER =====
+function hasAiProvider() {
+  return !!openaiApiKey;
+}
+
+// ===== AI API HELPER =====
 const HAIKU = 'claude-haiku-4-5-20251001';
 async function callClaude(prompt, {model, maxTokens} = {}) {
+  if (!openaiApiKey) throw new Error('설정 탭에서 OpenAI API Key를 먼저 입력해주세요. Claude API는 OpenAI 제한 시 폴백으로만 사용됩니다.');
+  if (openaiApiKey) {
+    try {
+      return await callOpenAI(prompt, {maxTokens});
+    } catch(e) {
+      if (!claudeApiKey || !shouldFallbackToClaude(e)) throw e;
+      console.warn('OpenAI API failed; falling back to Claude:', e.message);
+    }
+  }
+  throw new Error('OpenAI API 호출에 실패했습니다. Claude API Key가 있으면 제한/서버 오류 시 자동 폴백됩니다.');
+}
+
+async function callOpenAI(prompt, {maxTokens} = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  try {
+    const resp = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: openaiModel,
+        input: prompt,
+        max_output_tokens: maxTokens || 4096
+      })
+    });
+    clearTimeout(timeoutId);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      const apiError = new Error(err.error?.message || `OpenAI API 오류 (${resp.status})`);
+      apiError.status = resp.status;
+      throw apiError;
+    }
+    const result = await resp.json();
+    const outputText = extractOpenAIText(result);
+    if (!outputText) throw new Error('OpenAI 응답 텍스트를 찾을 수 없습니다.');
+    return outputText;
+  } catch(e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      const timeoutError = new Error('OpenAI 응답 시간 초과 (60초)');
+      timeoutError.status = 408;
+      throw timeoutError;
+    }
+    throw e;
+  }
+}
+
+function extractOpenAIText(result) {
+  if (result.output_text) return result.output_text;
+  const parts = [];
+  for (const item of result.output || []) {
+    for (const content of item.content || []) {
+      if (content.type === 'output_text' && content.text) parts.push(content.text);
+      if (content.type === 'text' && content.text) parts.push(content.text);
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+function shouldFallbackToClaude(error) {
+  return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+async function callClaudeFallback(prompt, {model, maxTokens} = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
@@ -2321,7 +2468,7 @@ async function callClaude(prompt, {model, maxTokens} = {}) {
     return result.content[0].text;
   } catch(e) {
     clearTimeout(timeoutId);
-    if (e.name === 'AbortError') throw new Error('AI 응답 시간 초과 (30초). 다시 시도해주세요.');
+    if (e.name === 'AbortError') throw new Error('AI 응답 시간 초과 (60초). 다시 시도해주세요.');
     throw e;
   }
 }
@@ -2573,9 +2720,134 @@ function restoreTabOrder(order) {
   });
 }
 
+// ===== SEARCH =====
+let searchActive = false;
+let previousTab = 'input';
+
+function handleSearch() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  const clearBtn = document.getElementById('searchClear');
+  clearBtn.style.display = query ? 'block' : 'none';
+
+  if (!query) {
+    if (searchActive) {
+      searchActive = false;
+      switchTab(previousTab);
+    }
+    return;
+  }
+
+  if (!searchActive) {
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab && activeTab.dataset.tab !== 'search') {
+      previousTab = activeTab.dataset.tab;
+    }
+    searchActive = true;
+  }
+
+  const results = tasks.filter(t => {
+    const titleMatch = t.title.toLowerCase().includes(query);
+    const catMatch = t.category && t.category.toLowerCase().includes(query);
+    const noteMatch = t.note && t.note.toLowerCase().includes(query);
+    const groupMatch = t.caseGroup && t.caseGroup.toLowerCase().includes(query);
+    return titleMatch || catMatch || noteMatch || groupMatch;
+  });
+
+  // Show search panel
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-search').classList.add('active');
+
+  const infoEl = document.getElementById('searchResultsInfo');
+  infoEl.textContent = `"${document.getElementById('searchInput').value.trim()}" 검색 결과: ${results.length}건`;
+
+  const listEl = document.getElementById('searchResults');
+  if (results.length === 0) {
+    listEl.innerHTML = '<p style="text-align:center;color:var(--text2);padding:40px;">검색 결과가 없습니다.</p>';
+  } else {
+    listEl.innerHTML = results.map(t => renderTaskItem(t)).join('');
+  }
+}
+
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').style.display = 'none';
+  if (searchActive) {
+    searchActive = false;
+    switchTab(previousTab);
+  }
+}
+
+// ===== COMPLETED TAB =====
+function renderCompleted() {
+  const sortBy = document.getElementById('completedSort').value;
+  let completed = tasks.filter(t => t.done);
+
+  completed.sort((a, b) => {
+    if (sortBy === 'recent') return new Date(b.doneAt || 0) - new Date(a.doneAt || 0);
+    if (sortBy === 'oldest') return new Date(a.doneAt || 0) - new Date(b.doneAt || 0);
+    if (sortBy === 'category') return (a.category || '').localeCompare(b.category || '', 'ko');
+    return 0;
+  });
+
+  const listEl = document.getElementById('completedList');
+  const tabBtn = document.querySelector('.tab[data-tab="completed"]');
+
+  if (tabBtn) {
+    tabBtn.textContent = completed.length > 0 ? `완료 (${completed.length})` : '완료';
+  }
+
+  if (completed.length === 0) {
+    listEl.innerHTML = '<p style="text-align:center;color:var(--text2);padding:40px;">완료된 업무가 없습니다.</p>';
+    return;
+  }
+
+  listEl.innerHTML = completed.map(t => {
+    const doneDate = t.doneAt ? new Date(t.doneAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    return `<div class="completed-item">
+      <div class="task-body">
+        <div class="task-title">${escHtml(t.title)}</div>
+        <div class="task-meta">
+          <span class="tag tag-${t.quadrant}">${quadLabel(t.quadrant)}</span>
+          <span class="tag tag-cat">${t.category}</span>
+          <span class="done-date">${doneDate} 완료</span>
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="btn-restore btn-sm" onclick="restoreTask('${t.id}')">복원</button>
+        <button class="btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteTask('${t.id}')">삭제</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function restoreTask(id) {
+  const t = tasks.find(t => String(t.id) === String(id));
+  if (t) {
+    t.done = false;
+    t.doneAt = null;
+    saveTasks();
+    renderAll();
+    showToast('업무가 복원되었습니다.');
+  }
+}
+
+function clearAllCompleted() {
+  const completed = tasks.filter(t => t.done);
+  if (completed.length === 0) return;
+  if (!confirm(`완료된 업무 ${completed.length}건을 모두 삭제합니다. 계속할까요?`)) return;
+  tasks = tasks.filter(t => !t.done);
+  saveTasks();
+  renderAll();
+  showToast(`${completed.length}건의 완료 업무가 삭제되었습니다.`);
+}
+
 // Keyboard shortcut
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeEditModal();
+  if (e.key === 'Escape') {
+    closeEditModal();
+    if (searchActive) clearSearch();
+  }
 });
 
 // PWA Service Worker
